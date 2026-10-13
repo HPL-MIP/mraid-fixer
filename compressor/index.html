@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CreativeCompress Pro &mdash; HTML Build & Video Compressor</title>
+  <meta name="description" content="Upload multiple HTML ad creatives and compress embedded base64 videos, images, CSS, and JS builds below DSP limits (3.4 MB / 5.0 MB)." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Local JSZip with CDN fallback for full offline and online batch ZIP downloads -->
+  <script src="jszip.min.js"></script>
+  <script>
+    if (typeof JSZip === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\/script>');
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-base: #090b10;
+      --bg-surface: #0f131a;
+      --bg-card: #141922;
+      --bg-card-hover: #19202c;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-light: rgba(255, 255, 255, 0.14);
+      --border-active: rgba(99, 179, 237, 0.45);
+      --accent-blue: #63b3ed;
+      --accent-green: #68d391;
+      --accent-amber: #f6ad55;
+      --accent-red: #fc8181;
+      --accent-purple: #b794f4;
+      --accent-cyan: #4fd1c5;
+      --grd-blue: linear-gradient(135deg, #3182ce, #63b3ed);
+      --grd-green: linear-gradient(135deg, #276749, #68d391);
+      --grd-purple: linear-gradient(135deg, #553c9a, #b794f4);
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --r-sm: 6px;
+      --r-md: 12px;
+      --r-lg: 18px;
+      --r-xl: 24px;
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      --glow-blue: 0 0 35px rgba(99, 179, 237, 0.16);
+      --ease: .22s cubic-bezier(.4, 0, .2, 1);
+    }
+
+    html {
+      scroll-behavior: smooth;
+      overflow-y: scroll;
+      overflow-x: hidden;
+      min-height: 100%;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-y: visible;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    /* Ambient background gradient meshes */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 50% at 15% 10%, rgba(99, 102, 241, 0.09) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 85% 85%, rgba(99, 179, 237, 0.08) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      padding: 16px 36px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(9, 11, 16, 0.78);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--grd-purple);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px rgba(183, 148, 244, 0.35);
+      flex-shrink: 0;
+      transition: var(--ease);
+    }
+
+    .logo-group:hover .logo-icon {
+      transform: scale(1.05) rotate(-3deg);
+    }
+
+    .logo-titles {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .logo-title {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .logo-title span {
+      background: var(--grd-blue);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .hdr-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--border);
+      margin-left: 14px;
+    }
+
+    .hdr-nav-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 14px;
+      border-radius: var(--r-sm);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: var(--ease);
+      border: 1px solid transparent;
+    }
+
+    .hdr-nav-link:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .hdr-nav-link.active {
+      background: rgba(99, 179, 237, 0.18);
+      color: #fff;
+      border-color: rgba(99, 179, 237, 0.4);
+      box-shadow: 0 0 16px rgba(99, 179, 237, 0.2);
+    }
+
+    .hdr-nav-link .nav-icon {
+      font-size: 15px;
+    }
+
+    .hdr-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-hdr {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 16px;
+      border-radius: var(--r-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--ease);
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+
+    .btn-hdr-ghost {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border);
+      color: var(--text-secondary);
+    }
+
+    .btn-hdr-ghost:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+      border-color: var(--border-light);
+    }
+
+    .btn-hdr-primary {
+      background: var(--grd-blue);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(99, 179, 237, 0.25);
+    }
+
+    .btn-hdr-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(99, 179, 237, 0.35);
+    }
+
+    .btn-hdr-green {
+      background: var(--grd-green);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(104, 211, 145, 0.2);
+    }
+
+    .btn-hdr-green:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(104, 211, 145, 0.3);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 36px 40px;
+      gap: 28px;
+      max-width: 1340px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Settings Panel */
+    .panel-settings {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel-settings::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100%;
+      background: radial-gradient(circle at 100% 0%, rgba(99, 179, 237, 0.06), transparent 70%);
+      pointer-events: none;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .settings-title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .settings-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(99, 179, 237, 0.12);
+      color: var(--accent-blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .settings-heading {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .settings-subheading {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .setting-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .setting-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Preset selector pills */
+    .pill-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill-opt {
+      flex: 1;
+      min-width: 90px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: var(--ease);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      user-select: none;
+    }
+
+    .pill-opt:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+      border-color: var(--border-light);
+    }
+
+    .pill-opt.active {
+      background: rgba(99, 179, 237, 0.14);
+      border-color: var(--accent-blue);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(99, 179, 237, 0.2);
+    }
+
+    .pill-opt .sub {
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .pill-opt.active .sub {
+      color: var(--accent-blue);
+    }
+
+    /* Range Controls */
+    .range-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .range-val-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .range-val-row strong {
+      color: var(--accent-blue);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent-blue);
+    }
+
+    /* Checkbox Toggles */
+    .toggle-list {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-item input[type="checkbox"] {
+      accent-color: var(--accent-blue);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    /* Drop Zone */
+    .dropzone-container {
+      border: 2px dashed var(--border-active);
+      border-radius: var(--r-xl);
+      padding: 56px 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .22s cubic-bezier(.4, 0, .2, 1);
+      background: rgba(99, 179, 237, 0.02);
+      position: relative;
+      overflow: hidden;
+      outline: none;
+    }
+
+    .dropzone-container * {
+      pointer-events: none;
+    }
+
+    .dropzone-container button,
+    .dropzone-container input {
+      pointer-events: auto;
+    }
+
+    .dropzone-container:hover {
+      border-color: var(--accent-blue);
+      background: rgba(99, 179, 237, 0.05);
+      box-shadow: var(--glow-blue);
+    }
+
+    .dropzone-container.dragover {
+      border-color: var(--accent-green) !important;
+      border-style: solid !important;
+      background: rgba(104, 211, 145, 0.08) !important;
+      box-shadow: 0 0 45px rgba(104, 211, 145, 0.32) !important;
+      transform: scale(1.012);
+    }
+
+    .dz-icon-box {
+      width: 68px;
+      height: 68px;
+      border-radius: 20px;
+      background: rgba(99, 179, 237, 0.1);
+      border: 1px solid rgba(99, 179, 237, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      margin: 0 auto 20px;
+      transition: var(--ease);
+    }
+
+    .dropzone-container:hover .dz-icon-box {
+      transform: translateY(-4px) scale(1.05);
+      background: rgba(99, 179, 237, 0.2);
+    }
+
+    .dropzone-container.dragover .dz-icon-box {
+      transform: translateY(-8px) scale(1.2);
+      background: rgba(104, 211, 145, 0.25) !important;
+      border-color: var(--accent-green) !important;
+      box-shadow: 0 0 25px rgba(104, 211, 145, 0.45);
+    }
+
+    .dropzone-container.dragover .dz-main-text {
+      color: var(--accent-green);
+    }
+
+    .dz-drag-overlay-hint {
+      display: none;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-green);
+      letter-spacing: 0.5px;
+      margin-top: -10px;
+      margin-bottom: 14px;
+      animation: dzPulse 1.2s infinite;
+    }
+
+    .dropzone-container.dragover .dz-drag-overlay-hint {
+      display: block;
+    }
+
+    @keyframes dzPulse {
+      0%, 100% { opacity: 0.8; transform: scale(0.98); }
+      50% { opacity: 1; transform: scale(1.02); }
+    }
+
+    .dz-main-text {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .dz-sub-text {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      max-width: 580px;
+      margin: 0 auto 24px;
+    }
+
+    .dz-sub-text strong {
+      color: var(--accent-blue);
+    }
+
+    .dz-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn-dz {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: var(--r-md);
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: var(--ease);
+    }
+
+    .btn-dz-primary {
+      background: var(--grd-blue);
+      color: #fff;
+      box-shadow: 0 4px 18px rgba(99, 179, 237, 0.3);
+    }
+
+    .btn-dz-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(99, 179, 237, 0.4);
+    }
+
+    .btn-dz-sample {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-dz-sample:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-light);
+    }
+
+    .dz-meta-tags {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 22px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .dz-tag {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Queue & Batch Header */
+    .queue-section {
+      display: none;
+      flex-direction: column;
+      gap: 18px;
+      margin-top: 10px;
+    }
+
+    .queue-section.visible {
+      display: flex;
+    }
+
+    .queue-header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px 22px;
+    }
+
+    .queue-stats-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .q-stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .q-stat-lbl {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .q-stat-val {
+      font-size: 15px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-primary);
+    }
+
+    .q-stat-val.saving {
+      color: var(--accent-green);
+    }
+
+    .q-divider {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+    }
+
+    .queue-actions-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Queue Cards List */
+    .file-cards-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .file-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: var(--ease);
+    }
+
+    .file-card:hover {
+      border-color: var(--border-light);
+      background: var(--bg-card-hover);
+    }
+
+    .file-card.completed {
+      border-color: rgba(104, 211, 145, 0.3);
+      background: rgba(104, 211, 145, 0.02);
+    }
+
+    .fc-top-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .fc-file-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(99, 179, 237, 0.12);
+      border: 1px solid rgba(99, 179, 237, 0.25);
+      color: var(--accent-blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .fc-file-info {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .fc-file-name {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      word-break: break-all;
+    }
+
+    .fc-file-tags {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    .fc-tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .fc-tag.tag-video {
+      background: rgba(183, 148, 244, 0.12);
+      color: var(--accent-purple);
+      border-color: rgba(183, 148, 244, 0.25);
+    }
+
+    .fc-tag.tag-image {
+      background: rgba(79, 209, 197, 0.12);
+      color: var(--accent-cyan);
+      border-color: rgba(79, 209, 197, 0.25);
+    }
+
+    .fc-size-compare {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .fc-size-orig {
+      color: var(--text-secondary);
+    }
+
+    .fc-arrow {
+      color: var(--text-muted);
+    }
+
+    .fc-size-comp {
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .fc-badge-saving {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(104, 211, 145, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(104, 211, 145, 0.3);
+    }
+
+    .fc-badge-limit {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 12px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    .fc-badge-limit.pass {
+      background: rgba(104, 211, 145, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(104, 211, 145, 0.35);
+    }
+
+    .fc-badge-limit.warn {
+      background: rgba(246, 173, 85, 0.15);
+      color: var(--accent-amber);
+      border: 1px solid rgba(246, 173, 85, 0.35);
+    }
+
+    .fc-badge-limit.fail {
+      background: rgba(252, 129, 129, 0.18);
+      color: var(--accent-red);
+      border: 1px solid rgba(252, 129, 129, 0.35);
+    }
+
+    .fc-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .btn-fc {
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--r-md);
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: var(--ease);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .btn-fc:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-light);
+    }
+
+    .btn-fc-primary {
+      background: var(--grd-blue);
+      border-color: transparent;
+      color: #fff;
+    }
+
+    .btn-fc-green {
+      background: var(--grd-green);
+      border-color: transparent;
+      color: #fff;
+    }
+
+    .btn-fc-recompress {
+      background: rgba(99, 179, 237, 0.12);
+      border-color: rgba(99, 179, 237, 0.4);
+      color: var(--accent-blue);
+    }
+
+    .btn-fc-recompress:hover {
+      background: rgba(99, 179, 237, 0.25);
+      border-color: var(--accent-blue);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .btn-fc-del {
+      color: var(--accent-red);
+      background: rgba(252, 129, 129, 0.08);
+      border-color: rgba(252, 129, 129, 0.2);
+    }
+
+    .btn-fc-del:hover {
+      background: rgba(252, 129, 129, 0.2);
+    }
+
+    /* Progress bar */
+    .fc-progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .fc-progress-wrap.active {
+      display: flex;
+    }
+
+    .fc-progress-bar-bg {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .fc-progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3182ce, #63b3ed, #68d391);
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+
+    .fc-progress-status {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .fc-progress-status span.status-msg {
+      color: var(--accent-blue);
+      font-weight: 500;
+    }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-backdrop.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--r-xl);
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 60px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+    }
+
+    .modal-head {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-head h3 {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: var(--ease);
+    }
+
+    .modal-close:hover {
+      background: rgba(252, 129, 129, 0.2);
+      color: var(--accent-red);
+    }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Sandbox device frames */
+    #modalPreview .modal-card {
+      max-width: 1100px;
+    }
+
+    .preview-frame-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .preview-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .orientation-group {
+      display: inline-flex;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--border);
+      gap: 4px;
+    }
+
+    .btn-orientation {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border-radius: var(--r-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: var(--ease);
+    }
+
+    .btn-orientation:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .btn-orientation.active {
+      background: var(--grd-blue);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(99, 179, 237, 0.35);
+    }
+
+    .device-switcher {
+      display: flex;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .device-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: var(--r-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: var(--ease);
+    }
+
+    .device-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .device-btn.active {
+      background: rgba(99, 179, 237, 0.22);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .preview-dimension-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+    }
+
+    /* Preview Quality & Settings Strip */
+    .preview-settings-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      padding: 12px 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      font-size: 12px;
+      width: 100%;
+    }
+
+    .pss-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .pss-col-toggle {
+      margin-left: auto;
+    }
+
+    .pss-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .pss-val {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pss-val.font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .pss-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      width: fit-content;
+    }
+
+    .badge-purple {
+      background: rgba(183, 148, 244, 0.15);
+      color: var(--accent-purple);
+      border: 1px solid rgba(183, 148, 244, 0.3);
+    }
+
+    .badge-blue {
+      background: rgba(99, 179, 237, 0.15);
+      color: var(--accent-blue);
+      border: 1px solid rgba(99, 179, 237, 0.3);
+    }
+
+    .badge-green {
+      background: rgba(104, 211, 145, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(104, 211, 145, 0.3);
+    }
+
+    .badge-amber {
+      background: rgba(246, 173, 85, 0.15);
+      color: var(--accent-amber);
+      border: 1px solid rgba(246, 173, 85, 0.3);
+    }
+
+    .pss-tags {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    .pss-tag {
+      font-size: 10.5px;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .pss-tag.active {
+      background: rgba(99, 179, 237, 0.12);
+      color: var(--accent-blue);
+      border-color: rgba(99, 179, 237, 0.3);
+    }
+
+    .preview-version-toggle {
+      display: inline-flex;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--border);
+    }
+
+    .btn-pvt {
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 4px;
+      transition: var(--ease);
+    }
+
+    .btn-pvt.active {
+      background: var(--grd-blue);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(99, 179, 237, 0.35);
+    }
+
+    .preview-iframe-container {
+      width: 375px;
+      height: 667px;
+      max-width: 100%;
+      border: 1px solid var(--border-light);
+      border-radius: 20px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+      transition: width .25s ease, height .25s ease;
+    }
+
+    .preview-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #fff;
+    }
+
+    /* Extracted Asset List */
+    .asset-item-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      justify-content: space-between;
+    }
+
+    .asset-thumb-video {
+      width: 90px;
+      height: 60px;
+      border-radius: 6px;
+      background: #000;
+      object-fit: cover;
+    }
+
+    .asset-info {
+      flex: 1;
+      font-size: 13px;
+    }
+
+    /* Notification toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #141922;
+      border: 1px solid var(--accent-blue);
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow);
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 999;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: var(--ease);
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: auto;
+    }
+
+    footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 900px) {
+      header { padding: 14px 20px; flex-wrap: wrap; gap: 12px; }
+      .hdr-nav { order: 3; width: 100%; margin-left: 0; justify-content: center; }
+      main { padding: 20px; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .fc-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Header -->
+    <header>
+      <a href="index.html" class="logo-group" id="logoLink">
+        <div class="logo-icon">🗜️</div>
+        <div class="logo-titles">
+          <div class="logo-title">Creative<span>Compress</span> Pro</div>
+          <div class="logo-sub">HTML Build & Base64 Video Optimizer</div>
+        </div>
+      </a>
+
+      <!-- Navigation to both routes -->
+      <nav class="hdr-nav" aria-label="Tool Navigation">
+        <a href="../index.html" class="hdr-nav-link" title="MRAID v2.0 Compliance Fixer">
+          <span class="nav-icon">🛡️</span> MRAID Fixer
+        </a>
+        <a href="index.html" class="hdr-nav-link active" title="Creative Compressor & Video Optimizer">
+          <span class="nav-icon">🗜️</span> Creative Compressor
+        </a>
+      </nav>
+
+      <div class="hdr-right">
+        <button class="btn-hdr btn-hdr-ghost" id="btnClearAll" style="display: none;">
+          ✕ Clear Queue
+        </button>
+        <button class="btn-hdr btn-hdr-primary" id="btnCompressAllTop" style="display: none;">
+          ⚡ Compress All (<span id="topQueueCount">0</span>)
+        </button>
+        <button class="btn-hdr btn-hdr-green" id="btnDownloadZipTop" style="display: none;">
+          📦 Download .ZIP
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Compression Engine Parameters -->
+      <div class="panel-settings">
+        <div class="settings-header">
+          <div class="settings-title-group">
+            <div class="settings-icon">🎛️</div>
+            <div>
+              <div class="settings-heading">Compression Engine Parameters</div>
+              <div class="settings-subheading">H.264 Video CRF, Canvas Media Transcoding & Code Minification</div>
+            </div>
+          </div>
+
+          <div class="pill-group" id="dspPresetGroup">
+            <div class="pill-opt active" data-dsp="3.4">
+              <span>3.4 MB</span>
+              <span class="sub">AppLovin / Unity</span>
+            </div>
+            <div class="pill-opt" data-dsp="5.0">
+              <span>5.0 MB</span>
+              <span class="sub">DV360 / Google</span>
+            </div>
+            <div class="pill-opt" data-dsp="2.0">
+              <span>2.0 MB</span>
+              <span class="sub">Ultra-Light</span>
+            </div>
+            <div class="pill-opt" data-dsp="custom">
+              <span>Custom</span>
+              <span class="sub">Set Limit</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <!-- Video Compression (CRF & Bitrate) -->
+          <div class="setting-card">
+            <div class="setting-label">
+              <span>Video Encoding (H.264 / CRF)</span>
+            </div>
+            <div class="pill-group" id="crfPresetGroup">
+              <div class="pill-opt" data-crf="24" data-bitrate="1200">
+                <span>CRF 24</span>
+                <span class="sub">Near-Lossless</span>
+              </div>
+              <div class="pill-opt active" data-crf="26" data-bitrate="800">
+                <span>CRF 26</span>
+                <span class="sub">Optimal (Rec)</span>
+              </div>
+              <div class="pill-opt" data-crf="28" data-bitrate="480">
+                <span>CRF 28</span>
+                <span class="sub">Max Shrink</span>
+              </div>
+            </div>
+            <div class="range-wrap">
+              <div class="range-val-row">
+                <span>Target Bitrate Estimate:</span>
+                <strong id="bitrateDisplay">800 kbps</strong>
+              </div>
+              <input type="range" id="sliderBitrate" min="300" max="2000" step="50" value="800" />
+            </div>
+          </div>
+
+          <!-- Video Resolution & Audio Options -->
+          <div class="setting-card">
+            <div class="setting-label">
+              <span>Video Resolution & Audio</span>
+            </div>
+            <div class="pill-group" id="scalePresetGroup">
+              <div class="pill-opt active" data-scale="1.0">
+                <span>100%</span>
+                <span class="sub">Native</span>
+              </div>
+              <div class="pill-opt" data-scale="0.85">
+                <span>85%</span>
+                <span class="sub">Slight Downscale</span>
+              </div>
+              <div class="pill-opt" data-scale="0.75">
+                <span>75%</span>
+                <span class="sub">720p / 540p</span>
+              </div>
+            </div>
+            <div class="toggle-list">
+              <label class="toggle-item">
+                <span>Transcode Embedded Base64 Videos</span>
+                <input type="checkbox" id="chkTranscodeVideo" checked />
+              </label>
+              <label class="toggle-item">
+                <span>Mute / Strip Audio (Saves 10-15%)</span>
+                <input type="checkbox" id="chkStripAudio" checked />
+              </label>
+              <label class="toggle-item">
+                <span>MD5 Video Deduplication</span>
+                <input type="checkbox" id="chkDeduplicateVideo" checked />
+              </label>
+            </div>
+          </div>
+
+          <!-- Code & Asset Minification -->
+          <div class="setting-card">
+            <div class="setting-label">
+              <span>Build & Asset Minification</span>
+            </div>
+            <div class="toggle-list">
+              <label class="toggle-item">
+                <span>Minify HTML Markup & Comments</span>
+                <input type="checkbox" id="chkMinifyHtml" checked />
+              </label>
+              <label class="toggle-item">
+                <span>Minify Inline CSS <code>&lt;style&gt;</code></span>
+                <input type="checkbox" id="chkMinifyCss" checked />
+              </label>
+              <label class="toggle-item">
+                <span>Minify Inline JS <code>&lt;script&gt;</code></span>
+                <input type="checkbox" id="chkMinifyJs" checked />
+              </label>
+              <label class="toggle-item">
+                <span>Recompress Embedded Base64 Images</span>
+                <input type="checkbox" id="chkCompressImages" checked />
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload Dropzone Container -->
+      <div class="dropzone-container" id="dropzone" role="button" tabindex="0" aria-label="Drag and drop HTML files or click to browse">
+        <input type="file" id="fileInput" multiple accept=".html,.htm" style="display: none;" />
+        <div class="dz-icon-box">📁</div>
+        <div class="dz-drag-overlay-hint">✨ Drop Files Here to Compress</div>
+        <h2 class="dz-main-text">Drag & Drop HTML Build Files Here</h2>
+        <p class="dz-sub-text">
+          Drag & drop single or multiple HTML ad creatives (or entire folders), or <strong>click anywhere in this box</strong> to browse files.
+        </p>
+        <div class="dz-actions">
+          <button class="btn-dz btn-dz-primary" id="btnBrowseFiles" type="button">
+            📂 Browse HTML Files
+          </button>
+          <button class="btn-dz btn-dz-sample" id="btnLoadSample" type="button">
+            🧪 Load Sample Base64 Ad File
+          </button>
+        </div>
+        <div class="dz-meta-tags">
+          <span class="dz-tag">⚡ Drag & Drop Files or Folders</span>
+          <span class="dz-tag">🎬 Base64 H.264 Video Compression</span>
+          <span class="dz-tag">🔒 100% Client-Side In-Browser</span>
+          <span class="dz-tag">📦 Export Single or .ZIP</span>
+        </div>
+      </div>
+
+      <!-- Queue Section -->
+      <div class="queue-section" id="queueSection">
+        <div class="queue-header-bar">
+          <div class="queue-stats-left">
+            <div class="q-stat-item">
+              <span class="q-stat-lbl">Queued Files</span>
+              <span class="q-stat-val" id="statFileCount">0</span>
+            </div>
+            <div class="q-divider"></div>
+            <div class="q-stat-item">
+              <span class="q-stat-lbl">Total Input Size</span>
+              <span class="q-stat-val" id="statInputSize">0.00 MB</span>
+            </div>
+            <div class="q-divider"></div>
+            <div class="q-stat-item">
+              <span class="q-stat-lbl">Optimized Size</span>
+              <span class="q-stat-val" id="statOutputSize">0.00 MB</span>
+            </div>
+            <div class="q-divider"></div>
+            <div class="q-stat-item">
+              <span class="q-stat-lbl">Net Savings</span>
+              <span class="q-stat-val saving" id="statSavings">0% (0 KB)</span>
+            </div>
+          </div>
+
+          <div class="queue-actions-right">
+            <button class="btn-fc btn-fc-primary" id="btnCompressAllMain">
+              ⚡ Compress All Files
+            </button>
+            <button class="btn-fc btn-fc-green" id="btnDownloadZipMain">
+              📦 Download All as .ZIP
+            </button>
+          </div>
+        </div>
+
+        <!-- Cards List -->
+        <div class="file-cards-list" id="fileCardsList"></div>
+      </div>
+    </main>
+
+    <!-- Modal: Sandbox Preview -->
+    <div class="modal-backdrop" id="modalPreview">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3><span>📱</span> Live Creative Sandbox Preview</h3>
+          <button class="modal-close" data-close="modalPreview">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- Active Settings & Quality Summary Strip -->
+          <div class="preview-settings-strip" id="previewSettingsStrip">
+            <div class="pss-col">
+              <span class="pss-label">Creative Build</span>
+              <strong class="pss-val" id="prevInfoName">creative.html</strong>
+            </div>
+            <div class="pss-col">
+              <span class="pss-label">Video Quality (CRF)</span>
+              <span class="pss-badge badge-purple" id="prevInfoVideoQuality">CRF 26 (Optimal)</span>
+            </div>
+            <div class="pss-col">
+              <span class="pss-label">Target DSP Limit</span>
+              <span class="pss-badge badge-blue" id="prevInfoDspLimit">≤ 3.4 MB</span>
+            </div>
+            <div class="pss-col">
+              <span class="pss-label">Build File Size</span>
+              <span class="pss-val font-mono" id="prevInfoSize">Pending</span>
+            </div>
+            <div class="pss-col">
+              <span class="pss-label">Active Optimizations</span>
+              <div class="pss-tags" id="prevInfoTags"></div>
+            </div>
+            <div class="pss-col pss-col-toggle">
+              <span class="pss-label">Preview Version</span>
+              <div class="preview-version-toggle" id="prevVersionToggle">
+                <button type="button" class="btn-pvt active" id="btnPrevCompressed">⚡ Compressed</button>
+                <button type="button" class="btn-pvt" id="btnPrevOriginal">📄 Original</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-frame-wrap">
+            <div class="preview-toolbar">
+              <!-- Portrait & Landscape Orientation Buttons -->
+              <div class="orientation-group">
+                <button type="button" class="btn-orientation active" id="btnOrientPortrait" title="Switch to Portrait orientation">
+                  <span>📱</span> Portrait
+                </button>
+                <button type="button" class="btn-orientation" id="btnOrientLandscape" title="Switch to Landscape orientation">
+                  <span>🔄</span> Landscape
+                </button>
+              </div>
+
+              <!-- Device Presets -->
+              <div class="device-switcher">
+                <button type="button" class="device-btn active" data-w="375" data-h="667">Mobile (375×667)</button>
+                <button type="button" class="device-btn" data-w="414" data-h="896">Large (414×896)</button>
+                <button type="button" class="device-btn" data-w="768" data-h="1024">Tablet (768×1024)</button>
+                <button type="button" class="device-btn" data-w="320" data-h="480">Small (320×480)</button>
+              </div>
+
+              <!-- Live Dimension Indicator -->
+              <div class="preview-dimension-badge" id="previewDimBadge">
+                375 × 667 px (Portrait)
+              </div>
+            </div>
+
+            <div class="preview-iframe-container" id="previewContainer">
+              <iframe id="previewIframe" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Asset & Code Inspector -->
+    <div class="modal-backdrop" id="modalInspect">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3><span>🔍</span> Asset Breakdown & Code Inspector</h3>
+          <button class="modal-close" data-close="modalInspect">✕</button>
+        </div>
+        <div class="modal-body" id="inspectBody"></div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toastBox">Notification message</div>
+
+    <footer>
+      <div>
+        <strong>CreativeCompress Pro</strong> &bull; HTML Ad & Video Build Optimization Engine
+      </div>
+      <div>
+        <a href="../index.html">🛡️ MRAID Compliance Fixer</a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Connected Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
