@@ -282,6 +282,11 @@ class DateManipulatorApp {
       emptyState: document.getElementById('empty-state'),
       emptyLoadSample: document.getElementById('empty-load-sample'),
       emptyLoadDemo: document.getElementById('empty-load-demo'),
+      urlInput: document.getElementById('url-input'),
+      btnLoadUrl: document.getElementById('btn-load-url'),
+      urlImportForm: document.getElementById('url-import-form'),
+      emptyUrlInput: document.getElementById('empty-url-input'),
+      emptyUrlSubmit: document.getElementById('empty-url-submit'),
 
       // Top Toolbar Controls
       dateInput: document.getElementById('date-input'),
@@ -378,6 +383,33 @@ class DateManipulatorApp {
     this.dom.emptyLoadSample.addEventListener('click', () => this.loadWorkspaceSample(true));
     this.dom.emptyLoadDemo.addEventListener('click', () => this.loadDemoTemplate());
 
+    // URL Loaders
+    if (this.dom.urlImportForm) {
+      this.dom.urlImportForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleUrlSubmit(this.dom.urlInput ? this.dom.urlInput.value : '');
+      });
+    }
+    if (this.dom.btnLoadUrl) {
+      this.dom.btnLoadUrl.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.handleUrlSubmit(this.dom.urlInput ? this.dom.urlInput.value : '');
+      });
+    }
+    if (this.dom.emptyUrlSubmit) {
+      this.dom.emptyUrlSubmit.addEventListener('click', () => {
+        this.handleUrlSubmit(this.dom.emptyUrlInput ? this.dom.emptyUrlInput.value : '');
+      });
+    }
+    if (this.dom.emptyUrlInput) {
+      this.dom.emptyUrlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.handleUrlSubmit(this.dom.emptyUrlInput.value);
+        }
+      });
+    }
+
     // Date Input Change
     this.dom.dateInput.addEventListener('input', (e) => {
       this.state.simDate = e.target.value;
@@ -449,7 +481,14 @@ class DateManipulatorApp {
     // Reload Button
     this.dom.reloadBtn.addEventListener('click', () => {
       this.state.startTimeReal = Date.now();
-      this.renderActiveFile();
+      const activeFile = this.files.find(f => f.id === this.activeFileId);
+      if (activeFile && activeFile.isDirectUrl) {
+        const currentSrc = this.dom.previewIframe.src;
+        this.dom.previewIframe.src = 'about:blank';
+        setTimeout(() => { this.dom.previewIframe.src = currentSrc; }, 50);
+      } else {
+        this.renderActiveFile();
+      }
       this.showToast('Preview refreshed');
     });
 
@@ -534,6 +573,99 @@ class DateManipulatorApp {
         reader.readAsText(file);
       }
     });
+  }
+
+  async handleUrlSubmit(rawUrl) {
+    if (!rawUrl || !rawUrl.trim()) {
+      this.showToast('Please enter a valid URL');
+      return;
+    }
+
+    let url = rawUrl.trim();
+    if (!/^https?:\/\//i.test(url) && !url.startsWith('./') && !url.startsWith('/') && !url.startsWith('file:')) {
+      if (/^localhost(:\d+)?/i.test(url) || /^127\.0\.0\.1(:\d+)?/.test(url)) {
+        url = 'http://' + url;
+      } else {
+        url = 'https://' + url;
+      }
+    }
+
+    const submitBtns = [this.dom.btnLoadUrl, this.dom.emptyUrlSubmit].filter(Boolean);
+    submitBtns.forEach(btn => {
+      btn.disabled = true;
+      btn.dataset.origHtml = btn.innerHTML;
+      btn.innerHTML = '⏳';
+    });
+
+    this.showToast('Loading URL...');
+
+    try {
+      let fetchedHtml = null;
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          fetchedHtml = await resp.text();
+        }
+      } catch (corsErr) {
+        console.warn('Direct fetch blocked by CORS, loading directly into device frame:', corsErr);
+      }
+
+      let parsedName;
+      try {
+        const parsed = new URL(url);
+        parsedName = parsed.pathname.split('/').filter(Boolean).pop() || parsed.hostname;
+      } catch (_) {
+        parsedName = url.split('/').pop().split('?')[0] || url;
+      }
+
+      if (fetchedHtml) {
+        const displayName = parsedName.endsWith('.html') || parsedName.endsWith('.htm') ? parsedName : `${parsedName}.html`;
+        const urlFile = {
+          id: 'url_' + Date.now(),
+          name: displayName,
+          fullUrl: url,
+          size: this.formatBytes(fetchedHtml.length),
+          rawHtml: fetchedHtml,
+          isSample: false,
+          isUrl: true,
+          isDirectUrl: false
+        };
+
+        this.files.unshift(urlFile);
+        this.activeFileId = urlFile.id;
+        this.renderFilesList();
+        this.renderActiveFile();
+        this.showToast(`Loaded & simulated: ${displayName}`);
+      } else {
+        const urlFile = {
+          id: 'url_' + Date.now(),
+          name: parsedName || url,
+          fullUrl: url,
+          size: 'Remote URL',
+          rawHtml: '',
+          isSample: false,
+          isUrl: true,
+          isDirectUrl: true
+        };
+
+        this.files.unshift(urlFile);
+        this.activeFileId = urlFile.id;
+        this.renderFilesList();
+        this.renderActiveFile();
+        this.showToast('Loaded in device frame (direct URL)');
+      }
+
+      if (this.dom.urlInput) this.dom.urlInput.value = '';
+      if (this.dom.emptyUrlInput) this.dom.emptyUrlInput.value = '';
+    } catch (err) {
+      console.error('Failed to load URL:', err);
+      this.showToast('Failed to load URL: ' + err.message);
+    } finally {
+      submitBtns.forEach(btn => {
+        btn.disabled = false;
+        if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
+      });
+    }
   }
 
   // Handle uploaded files
@@ -637,16 +769,18 @@ class DateManipulatorApp {
     this.files.forEach(file => {
       const item = document.createElement('div');
       item.className = `file-item ${file.id === this.activeFileId ? 'active' : ''}`;
+      const icon = file.isUrl ? '🌐' : '📄';
+      const fileTitle = file.fullUrl ? `${file.name}\n${file.fullUrl}` : file.name;
       item.innerHTML = `
         <div class="file-item-left">
-          <div class="file-item-icon">📄</div>
+          <div class="file-item-icon">${icon}</div>
           <div class="file-item-meta">
-            <span class="file-item-name" title="${file.name}">${file.name}</span>
+            <span class="file-item-name" title="${fileTitle}">${file.name}</span>
             <span class="file-item-size">${file.size}</span>
           </div>
         </div>
         <div class="file-item-actions">
-          <button class="file-action-btn delete-btn" title="Remove file" data-id="${file.id}">✕</button>
+          <button class="file-action-btn delete-btn" title="Remove" data-id="${file.id}">✕</button>
         </div>
       `;
 
@@ -852,9 +986,14 @@ window.__SIMULATOR_CONFIG__ = {
 
     this.dom.emptyState.style.display = 'none';
 
-    // Update iframe content
-    const processedHtml = this.buildInjectedHtml(activeFile.rawHtml);
-    this.dom.previewIframe.srcdoc = processedHtml;
+    if (activeFile.isDirectUrl) {
+      this.dom.previewIframe.removeAttribute('srcdoc');
+      this.dom.previewIframe.src = activeFile.fullUrl;
+    } else {
+      this.dom.previewIframe.removeAttribute('src');
+      const processedHtml = this.buildInjectedHtml(activeFile.rawHtml);
+      this.dom.previewIframe.srcdoc = processedHtml;
+    }
 
     this.updateStatusDisplay();
   }

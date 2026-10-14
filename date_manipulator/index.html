@@ -334,6 +334,118 @@
       color: var(--text-muted);
     }
 
+    /* URL Import Section in Sidebar */
+    .url-import-divider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0 10px;
+      color: var(--text-subtle);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .url-import-divider::before,
+    .url-import-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-light);
+    }
+
+    .url-import-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .url-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .url-input-icon {
+      position: absolute;
+      left: 10px;
+      color: var(--text-muted);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      z-index: 2;
+    }
+
+    .url-input {
+      width: 100%;
+      height: 35px;
+      padding: 0 36px 0 30px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.18s ease;
+    }
+
+    .url-input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .url-input::placeholder {
+      color: var(--text-subtle);
+    }
+
+    .btn-url-submit {
+      position: absolute;
+      right: 4px;
+      width: 27px;
+      height: 27px;
+      border: none;
+      border-radius: 4px;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .btn-url-submit:hover {
+      background: var(--primary-hover);
+      transform: scale(1.05);
+    }
+
+    .btn-url-submit:active {
+      transform: scale(0.95);
+    }
+
+    .btn-url-submit:disabled {
+      background: var(--border-medium);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .url-input-hint {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      line-height: 1.35;
+      padding-left: 2px;
+    }
+
+    .empty-url-wrap {
+      margin-bottom: 18px;
+      width: 100%;
+    }
+
     /* File List Section */
     .files-section {
       flex: 1;
@@ -1039,7 +1151,7 @@
         </div>
       </div>
 
-      <!-- File Dropzone Section -->
+      <!-- File & URL Import Section -->
       <div class="import-section">
         <div class="dropzone" id="dropzone">
           <input type="file" id="file-input" accept=".html,.htm" multiple>
@@ -1053,6 +1165,24 @@
           <div class="dropzone-text">Import HTML File(s)</div>
           <div class="dropzone-hint">Drag & drop or click to browse</div>
         </div>
+
+        <div class="url-import-divider">
+          <span>Or load from URL</span>
+        </div>
+
+        <form class="url-import-form" id="url-import-form" onsubmit="event.preventDefault();">
+          <div class="url-input-wrap">
+            <span class="url-input-icon">🌐</span>
+            <input type="url" id="url-input" class="url-input" placeholder="https://... or localhost" autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn-url-submit" id="btn-load-url" title="Load & Simulate URL">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </button>
+          </div>
+          <div class="url-input-hint">Paste web, local dev, or CDN creative URL</div>
+        </form>
       </div>
 
       <!-- Imported Files List -->
@@ -1298,11 +1428,18 @@
         <div class="empty-state-overlay" id="empty-state" style="display: none;">
           <div class="empty-state-card">
             <div class="empty-icon">📂</div>
-            <h2 class="empty-title">Import an HTML file to simulate</h2>
+            <h2 class="empty-title">Import an HTML file or URL to simulate</h2>
             <p class="empty-desc">
-              Import any HTML file with dynamic dates, countdowns, or multilingual content.
+              Import any HTML file or enter a web URL with dynamic dates, countdowns, or multilingual content.
               Change the date, time, and language above to instantly see live simulated outputs.
             </p>
+            <div class="empty-url-wrap">
+              <div class="url-input-wrap" style="display:flex;align-items:center;">
+                <span class="url-input-icon">🌐</span>
+                <input type="url" id="empty-url-input" class="url-input" placeholder="https://example.com/ad.html or localhost" autocomplete="off" spellcheck="false">
+                <button type="button" class="btn btn-primary" id="empty-url-submit" style="padding: 0 14px; height: 35px; margin-left: 8px; border-radius: var(--radius-sm); font-size: 12px; white-space: nowrap; flex-shrink: 0;">Load URL</button>
+              </div>
+            </div>
             <div class="empty-actions">
               <button class="btn btn-primary" id="empty-load-sample">Load Workspace Sample.html</button>
               <button class="btn" id="empty-load-demo">Load Interactive Demo Banner</button>
@@ -1602,6 +1739,11 @@
           emptyState: document.getElementById('empty-state'),
           emptyLoadSample: document.getElementById('empty-load-sample'),
           emptyLoadDemo: document.getElementById('empty-load-demo'),
+          urlInput: document.getElementById('url-input'),
+          btnLoadUrl: document.getElementById('btn-load-url'),
+          urlImportForm: document.getElementById('url-import-form'),
+          emptyUrlInput: document.getElementById('empty-url-input'),
+          emptyUrlSubmit: document.getElementById('empty-url-submit'),
 
           // Top Toolbar Controls
           dateInput: document.getElementById('date-input'),
@@ -1711,6 +1853,33 @@
         this.dom.emptyLoadSample.addEventListener('click', () => this.loadWorkspaceSample(true));
         this.dom.emptyLoadDemo.addEventListener('click', () => this.loadDemoTemplate());
 
+        // URL Loaders
+        if (this.dom.urlImportForm) {
+          this.dom.urlImportForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleUrlSubmit(this.dom.urlInput ? this.dom.urlInput.value : '');
+          });
+        }
+        if (this.dom.btnLoadUrl) {
+          this.dom.btnLoadUrl.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.handleUrlSubmit(this.dom.urlInput ? this.dom.urlInput.value : '');
+          });
+        }
+        if (this.dom.emptyUrlSubmit) {
+          this.dom.emptyUrlSubmit.addEventListener('click', () => {
+            this.handleUrlSubmit(this.dom.emptyUrlInput ? this.dom.emptyUrlInput.value : '');
+          });
+        }
+        if (this.dom.emptyUrlInput) {
+          this.dom.emptyUrlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              this.handleUrlSubmit(this.dom.emptyUrlInput.value);
+            }
+          });
+        }
+
         // Date Input Change
         this.dom.dateInput.addEventListener('input', (e) => {
           this.state.simDate = e.target.value;
@@ -1782,7 +1951,14 @@
         // Reload Button
         this.dom.reloadBtn.addEventListener('click', () => {
           this.state.startTimeReal = Date.now();
-          this.renderActiveFile();
+          const activeFile = this.files.find(f => f.id === this.activeFileId);
+          if (activeFile && activeFile.isDirectUrl) {
+            const currentSrc = this.dom.previewIframe.src;
+            this.dom.previewIframe.src = 'about:blank';
+            setTimeout(() => { this.dom.previewIframe.src = currentSrc; }, 50);
+          } else {
+            this.renderActiveFile();
+          }
           this.showToast('Preview refreshed');
         });
 
@@ -1865,6 +2041,100 @@
             reader.readAsText(file);
           }
         });
+      }
+
+      async handleUrlSubmit(rawUrl) {
+        if (!rawUrl || !rawUrl.trim()) {
+          this.showToast('Please enter a valid URL');
+          return;
+        }
+
+        let url = rawUrl.trim();
+        // Normalize URL if protocol is missing
+        if (!/^https?:\/\//i.test(url) && !url.startsWith('./') && !url.startsWith('/') && !url.startsWith('file:')) {
+          if (/^localhost(:\d+)?/i.test(url) || /^127\.0\.0\.1(:\d+)?/.test(url)) {
+            url = 'http://' + url;
+          } else {
+            url = 'https://' + url;
+          }
+        }
+
+        const submitBtns = [this.dom.btnLoadUrl, this.dom.emptyUrlSubmit].filter(Boolean);
+        submitBtns.forEach(btn => {
+          btn.disabled = true;
+          btn.dataset.origHtml = btn.innerHTML;
+          btn.innerHTML = '⏳';
+        });
+
+        this.showToast('Loading URL...');
+
+        try {
+          let fetchedHtml = null;
+          try {
+            const resp = await fetch(url);
+            if (resp.ok) {
+              fetchedHtml = await resp.text();
+            }
+          } catch (corsErr) {
+            console.warn('Direct fetch blocked by CORS, loading directly into device frame:', corsErr);
+          }
+
+          let parsedName;
+          try {
+            const parsed = new URL(url);
+            parsedName = parsed.pathname.split('/').filter(Boolean).pop() || parsed.hostname;
+          } catch (_) {
+            parsedName = url.split('/').pop().split('?')[0] || url;
+          }
+
+          if (fetchedHtml) {
+            const displayName = parsedName.endsWith('.html') || parsedName.endsWith('.htm') ? parsedName : `${parsedName}.html`;
+            const urlFile = {
+              id: 'url_' + Date.now(),
+              name: displayName,
+              fullUrl: url,
+              size: this.formatBytes(fetchedHtml.length),
+              rawHtml: fetchedHtml,
+              isSample: false,
+              isUrl: true,
+              isDirectUrl: false
+            };
+
+            this.files.unshift(urlFile);
+            this.activeFileId = urlFile.id;
+            this.renderFilesList();
+            this.renderActiveFile();
+            this.showToast(`Loaded & simulated: ${displayName}`);
+          } else {
+            const urlFile = {
+              id: 'url_' + Date.now(),
+              name: parsedName || url,
+              fullUrl: url,
+              size: 'Remote URL',
+              rawHtml: '',
+              isSample: false,
+              isUrl: true,
+              isDirectUrl: true
+            };
+
+            this.files.unshift(urlFile);
+            this.activeFileId = urlFile.id;
+            this.renderFilesList();
+            this.renderActiveFile();
+            this.showToast('Loaded in device frame (direct URL)');
+          }
+
+          if (this.dom.urlInput) this.dom.urlInput.value = '';
+          if (this.dom.emptyUrlInput) this.dom.emptyUrlInput.value = '';
+        } catch (err) {
+          console.error('Failed to load URL:', err);
+          this.showToast('Failed to load URL: ' + err.message);
+        } finally {
+          submitBtns.forEach(btn => {
+            btn.disabled = false;
+            if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
+          });
+        }
       }
 
       async handleFiles(fileList) {
@@ -1964,16 +2234,18 @@
         this.files.forEach(file => {
           const item = document.createElement('div');
           item.className = `file-item ${file.id === this.activeFileId ? 'active' : ''}`;
+          const icon = file.isUrl ? '🌐' : '📄';
+          const fileTitle = file.fullUrl ? `${file.name}\n${file.fullUrl}` : file.name;
           item.innerHTML = `
             <div class="file-item-left">
-              <div class="file-item-icon">📄</div>
+              <div class="file-item-icon">${icon}</div>
               <div class="file-item-meta">
-                <span class="file-item-name" title="${file.name}">${file.name}</span>
+                <span class="file-item-name" title="${fileTitle}">${file.name}</span>
                 <span class="file-item-size">${file.size}</span>
               </div>
             </div>
             <div class="file-item-actions">
-              <button class="file-action-btn delete-btn" title="Remove file" data-id="${file.id}">✕</button>
+              <button class="file-action-btn delete-btn" title="Remove" data-id="${file.id}">✕</button>
             </div>
           `;
 
@@ -2181,12 +2453,18 @@ window.__SIMULATOR_CONFIG__ = {
         this.dom.emptyState.style.display = 'none';
         if (this.dom.activeFileName) {
           this.dom.activeFileName.textContent = activeFile.name;
-          this.dom.activeFileName.title = `Active File: ${activeFile.name} (${activeFile.size})`;
+          this.dom.activeFileName.title = activeFile.fullUrl || `Active File: ${activeFile.name} (${activeFile.size})`;
           this.dom.activeFilePill.style.display = 'inline-flex';
         }
 
-        const processedHtml = this.buildInjectedHtml(activeFile.rawHtml);
-        this.dom.previewIframe.srcdoc = processedHtml;
+        if (activeFile.isDirectUrl) {
+          this.dom.previewIframe.removeAttribute('srcdoc');
+          this.dom.previewIframe.src = activeFile.fullUrl;
+        } else {
+          this.dom.previewIframe.removeAttribute('src');
+          const processedHtml = this.buildInjectedHtml(activeFile.rawHtml);
+          this.dom.previewIframe.srcdoc = processedHtml;
+        }
 
         this.updateStatusDisplay();
       }
