@@ -1802,13 +1802,15 @@
         /* CHECK 7 - Media Viewability */
         (function () {
           var hasVideo = /<video/i.test(html), hasAudio = /<audio|new\s+Audio/i.test(html),
-            hasIV = /mraid\.isViewable\s*\(\s*\)/i.test(html), hasVC = /viewableChange/i.test(html),
+            hasIV = /(?:window\.)?(?:mraid|m)\.isViewable\s*\(\s*\)/i.test(html), hasVC = /viewableChange/i.test(html),
             hasMedia = hasVideo || hasAudio;
+          var hasInjectedVB = /MRAID Viewability Lifecycle/i.test(html);
+
           if (!hasMedia) {
             results.push({ id: 'vb', title: 'Media Viewability Lifecycle', desc: 'No video/audio elements. Not applicable.', status: 'pass' });
             return;
           }
-          if (hasIV && hasVC) {
+          if (hasInjectedVB || (hasIV && hasVC)) {
             results.push({ id: 'vb', title: 'Media Viewability Lifecycle', desc: 'isViewable() and viewableChange listener both present.', status: 'pass' });
             return;
           }
@@ -1826,8 +1828,8 @@
             '  }',
             '  function setup(){',
             '    var m=window.mraid;if(!m)return;',
-            '    if(typeof m.isViewable==="function"){try{sync(m.isViewable());}catch(e){}}',
-            '    if(typeof m.addEventListener==="function"){try{m.addEventListener("viewableChange",sync);}catch(e){}}',
+            '    if(typeof mraid.isViewable==="function"){try{sync(mraid.isViewable());}catch(e){}}',
+            '    if(typeof mraid.addEventListener==="function"){try{mraid.addEventListener("viewableChange",sync);}catch(e){}}',
             '  }',
             '  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",setup);}else{setup();}',
             '})();',
