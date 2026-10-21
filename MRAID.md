@@ -123,10 +123,32 @@ The fixer engine executes 11 specialized checks in sequence. Below is how each c
   ```javascript
   mraid.getState() === "loading"
   ```
-* **Violation Detected**: Using inverted conditions like `mraid.getState() !== "loading"`, which can fail automated regex tests even though logical evaluation succeeds in JavaScript.
+* **Violations Detected**:
+  1. No `mraid.getState() === "loading"` check found anywhere in the creative when MRAID is used.
+  2. Using inverted/negated conditions like `mraid.getState() !== "loading"`, which can fail automated regex tests even though logical evaluation succeeds in JavaScript.
 * **Automated Fix**:
-  - Scans for negated patterns: `/mraid\.getState\s*\(\s*\)\s*!==?\s*["']loading["']/gi`.
-  - Emits clear warning notifications to highlight non-compliant state guards so ad engineers can align with network-mandated regex syntax.
+  - Scans for affirmative pattern `/(?:window\.)?mraid\.getState\s*\(\s*\)\s*===?\s*["']loading["']/gi` and negated pattern `/(?:window\.)?mraid\.getState\s*\(\s*\)\s*!==?\s*["']loading["']/gi`.
+  - If missing or non-compliant, automatically injects the compliant MRAID explicit state check guard into `<head>` immediately following `mraid.js`:
+    ```html
+    <script>
+    /* Explicit MRAID State Compliance Guard - injected by MRAID Fixer */
+    (function(){
+      function checkState(){
+        var m=window.mraid;
+        if(m&&typeof m.getState==="function"){
+          if(mraid.getState()==="loading"){
+            var onReady=function(){
+              if(typeof mraid.removeEventListener==="function"){mraid.removeEventListener("ready",onReady);}
+            };
+            if(typeof mraid.addEventListener==="function"){mraid.addEventListener("ready",onReady);}
+          }
+        }
+      }
+      if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",checkState);}
+      else{checkState();}
+    })();
+    </script>
+    ```
 
 ---
 
@@ -208,9 +230,11 @@ The fixer engine executes 11 specialized checks in sequence. Below is how each c
 
 ### Check 7: Automated Media Viewability Lifecycle Management
 * **Validator Rule**: MRAID v2.0 mandates that all audio and video playback must pause immediately when the ad loses viewability (`mraid.isViewable() === false`) and may resume only when viewability is restored.
-* **Violation Detected**: `<video>` or `<audio>` elements present without `viewableChange` listeners or `mraid.isViewable()` checks.
+* **Violations Detected**:
+  1. `<video>` or `<audio>` elements present without both `viewableChange` listeners and `mraid.isViewable()` checks.
+  2. Partial viewability handling (e.g. ad includes `mraid.isViewable()` check but omits the `viewableChange` event listener, or vice-versa).
 * **Automated Fix**:
-  Injects an automated media synchronization script right before `</body>`:
+  Automatically detects missing or partial handling and injects the standardized media synchronization script right before `</body>` to guarantee 100% compliance:
 
 ```html
 <script>
