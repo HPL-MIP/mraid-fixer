@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MRAID / HTML Reposition Studio</title>
+  <meta name="description" content="Visual Drag-and-Drop and Coordinate Repositioning Studio for MRAID & HTML Playable Ads">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="dark-theme">
+  <!-- Top Global Suite Navigation Header -->
+  <header class="global-header">
+    <div class="global-header-left">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Reposition Studio</h1>
+          <span class="brand-subtitle">MRAID & Banner Layout Engine</span>
+        </div>
+      </div>
+
+      <!-- Navigation to all tools -->
+      <nav class="hdr-nav" aria-label="Tool Navigation">
+        <a href="../index.html" class="hdr-nav-link" title="MRAID v2.0 Compliance Fixer">
+          <span class="nav-icon">🛡️</span> MRAID Fixer
+        </a>
+        <a href="../compressor/index.html" class="hdr-nav-link" title="Creative Compressor & Video Optimizer">
+          <span class="nav-icon">🗜️</span> Creative Compressor
+        </a>
+        <a href="../date_manipulator/index.html" class="hdr-nav-link" title="Dynamic Date, Time & Language Manipulator">
+          <span class="nav-icon">📅</span> Date Manipulator
+        </a>
+        <a href="index.html" class="hdr-nav-link active" title="Reposition Studio & Element Layout Editor">
+          <span class="nav-icon">🎯</span> Reposition Studio
+        </a>
+      </nav>
+    </div>
+
+    <div class="global-header-right">
+      <div class="suite-badge">Layout Simulator Suite</div>
+    </div>
+  </header>
+
+  <!-- Studio Toolbar: File Details, Canvas Controls & Actions -->
+  <div class="studio-toolbar">
+    <div class="toolbar-left">
+      <div class="file-pill" id="fileStatusBadge">
+        <span class="file-status-dot"></span>
+        <span class="file-name" id="currentFileName">No HTML Loaded</span>
+        <span class="file-size" id="currentFileSize" style="display: none;">0 KB</span>
+        <span class="file-tag" id="templateTag" style="display: none;">HTML</span>
+      </div>
+      <button id="btnOpenFile" class="tool-btn sm" title="Upload an HTML ad file from computer" style="width: auto; padding: 0 12px; font-size: 11.5px; background: var(--gradient-primary); color: #fff; border: none; font-weight: 600; height: 30px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        <span>Upload HTML</span>
+      </button>
+      <input type="file" id="fileInput" accept=".html,.htm" style="display: none;">
+    </div>
+
+    <!-- Center Control Bar -->
+    <div class="header-center">
+      <div class="toolbar-group">
+        <button id="btnUndo" class="tool-btn" title="Undo (Ctrl+Z)" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 7v6h6M3 13a9 9 0 1 0 3-7.7L3 7"/>
+          </svg>
+        </button>
+        <button id="btnRedo" class="tool-btn" title="Redo (Ctrl+Y)" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 7v6h-6M21 13a9 9 0 1 1-3-7.7L21 7"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Scene Selector for MIP & Multi-Scene Creatives -->
+      <div id="sceneSelectorWrapper" class="scene-selector-wrapper" style="display: none;">
+        <span class="scene-selector-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Scene
+        </span>
+        <div class="scene-pills" id="scenePillsContainer">
+          <button type="button" class="scene-pill active" data-scene="intro" title="Hero greeting, character traits & tap-to-start">👋 Intro</button>
+          <button type="button" class="scene-pill" data-scene="question" title="Chat question bubble & choice buttons">❓ Question</button>
+          <button type="button" class="scene-pill" data-scene="reaction" title="Outgoing player message & character reaction">💬 Reaction</button>
+          <button type="button" class="scene-pill" data-scene="endcard" title="Final card, logo, title & CTA button">🏆 End Card</button>
+        </div>
+      </div>
+      <div id="sceneDivider" class="toolbar-divider" style="display: none;"></div>
+
+      <!-- Device View Selector -->
+      <div class="device-select-wrapper">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+          <line x1="12" y1="18" x2="12.01" y2="18"/>
+        </svg>
+        <select id="devicePresetSelect" class="toolbar-select">
+          <option value="9:16">Standard Ad (9:16 - 360×640)</option>
+          <option value="iphone15">iPhone 15 Pro (393×852)</option>
+          <option value="pixel8">Pixel 8 (412×892)</option>
+          <option value="compact">Compact Ad (320×568)</option>
+          <option value="ipad">iPad Mini (3:4)</option>
+          <option value="landscape">Landscape Ad (16:9 - 640×360)</option>
+          <option value="responsive">Responsive / Fluid</option>
+        </select>
+      </div>
+
+      <!-- Orientation Switcher Button -->
+      <button id="btnOrientationToggle" class="tool-btn" title="Toggle Portrait / Landscape Orientation (P / L)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 16l-4 4-4-4M4 8l4-4 4 4M16 20V4M8 4v16"/>
+        </svg>
+        <span id="orientationLabel" class="btn-text">Portrait</span>
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Zoom Controller -->
+      <div class="zoom-controls">
+        <button id="btnZoomOut" class="tool-btn sm" title="Zoom Out">-</button>
+        <span id="zoomLabel" class="zoom-text">100%</span>
+        <button id="btnZoomIn" class="tool-btn sm" title="Zoom In">+</button>
+        <button id="btnZoomReset" class="tool-btn sm" title="Fit to View">Fit</button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Toggles -->
+      <div class="toolbar-group">
+        <button id="btnToggleSnap" class="tool-btn active" title="Magnetic Snapping (Toggle)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 14a8 8 0 0 1 16 0v7H4v-7z"/>
+            <path d="M9 14a3 3 0 0 1 6 0v7H9v-7z"/>
+          </svg>
+          <span class="btn-text">Snap</span>
+        </button>
+        <button id="btnToggleGrid" class="tool-btn active" title="Show Guides & Rulers">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+          </svg>
+          <span class="btn-text">Grid</span>
+        </button>
+        <button id="btnToggleVideo" class="tool-btn active" title="Toggle Background Video Playback">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span class="btn-text">Video</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="header-right">
+      <button id="btnDiff" class="btn btn-secondary" title="View changes compared to original">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+        </svg>
+        <span>Diff</span>
+      </button>
+
+      <button id="btnExport" class="btn btn-secondary" title="Export HTML or CSS">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        <span>Export</span>
+      </button>
+
+      <button id="btnSaveFile" class="btn btn-primary" title="Save changes directly to file" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        <span>Save to File</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Application Body -->
+  <main class="app-main">
+    <!-- LEFT SIDEBAR: Layers & Elements List -->
+    <aside class="sidebar sidebar-left" id="sidebarLeft">
+      <div class="sidebar-header">
+        <div class="sidebar-title-row">
+          <h2 class="sidebar-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            Layers & Elements
+          </h2>
+          <span class="count-badge" id="elementCountBadge">0</span>
+        </div>
+
+        <!-- Sidebar Scene Filter Bar for MIP -->
+        <div class="sidebar-scene-bar" id="sidebarSceneBar" style="display: none;">
+          <span class="sidebar-scene-label">Active Scene:</span>
+          <select id="sidebarSceneSelect" class="sidebar-scene-select">
+            <option value="intro">👋 1. Intro Scene</option>
+            <option value="question">❓ 2. Question Scene</option>
+            <option value="reaction">💬 3. Reaction Scene</option>
+            <option value="endcard">🏆 4. End Card</option>
+            <option value="all">🌐 All Scenes</option>
+          </select>
+        </div>
+
+        <div class="search-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="layerSearchInput" placeholder="Filter elements (id, text, tag)...">
+        </div>
+
+        <div class="filter-tabs">
+          <button class="filter-tab active" data-filter="all">All</button>
+          <button class="filter-tab" data-filter="text">Text</button>
+          <button class="filter-tab" data-filter="button">Buttons</button>
+          <button class="filter-tab" data-filter="strip">Strips</button>
+          <button class="filter-tab" data-filter="rect">Shapes</button>
+        </div>
+      </div>
+
+      <div class="layers-container" id="layersList">
+        <!-- Rendered dynamically -->
+        <div class="empty-layers" id="emptyLayersMsg">Upload an HTML file to detect and edit layers.</div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="btnRescan" class="footer-action-btn" title="Rescan uploaded HTML">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Rescan Document
+        </button>
+        <button id="btnResetBackup" class="footer-action-btn" title="Reset changes back to initial state">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2.5 2v6h6M21.5 22v-6h-6"/>
+            <path d="M22 11.5A10 10 0 0 0 3.2 7.2L2.5 8M2 12.5a10 10 0 0 0 18.8 4.3l.7-.8"/>
+          </svg>
+          Reset Changes
+        </button>
+      </div>
+    </aside>
+
+    <!-- CENTER STAGE: Canvas Viewport & Simulator -->
+    <section class="canvas-viewport" id="canvasViewport">
+      <!-- Rulers -->
+      <div class="ruler ruler-horizontal" id="rulerHorizontal"></div>
+      <div class="ruler ruler-vertical" id="rulerVertical"></div>
+
+      <!-- Zoomable / Scalable Container -->
+      <div class="canvas-scaler" id="canvasScaler">
+        <!-- Device Frame Mockup -->
+        <div class="device-bezel" id="deviceBezel">
+          <div class="device-speaker"></div>
+
+          <!-- The 9:16 Ad Stage Screen -->
+          <div class="stage-screen" id="stageScreen">
+            <!-- Upload Welcome Dropzone (shown until user uploads HTML) -->
+            <div class="upload-prompt-container" id="uploadPromptContainer">
+              <div class="upload-prompt-icon">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                </svg>
+              </div>
+              <h3 class="upload-prompt-title">Upload HTML Ad</h3>
+              <p class="upload-prompt-desc">Drag & drop your HTML file here, or click to browse from your computer to begin repositioning elements.</p>
+              <button class="upload-prompt-btn" id="btnUploadPrompt" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                <span>Select HTML File</span>
+              </button>
+              <div class="upload-format-badges">
+                <span class="upload-format-badge">MRAID Ads</span>
+                <span class="upload-format-badge">SIP Video Creatives</span>
+                <span class="upload-format-badge">Interactive Playables</span>
+                <span class="upload-format-badge">HTML5 Banners</span>
+              </div>
+            </div>
+
+            <!-- Iframe hosting the live ad -->
+            <iframe id="adFrame" title="MRAID Ad Preview" style="display: none;"></iframe>
+
+            <!-- Interactive Visual Drag & Selection Overlay -->
+            <div class="interaction-overlay" id="interactionOverlay">
+              <!-- Snap Guide Lines -->
+              <div class="snap-guide snap-h" id="snapGuideH"></div>
+              <div class="snap-guide snap-v" id="snapGuideV"></div>
+              <div class="snap-guide snap-third" id="snapGuideThird"></div>
+
+              <!-- Selection Box -->
+              <div class="selection-box" id="selectionBox" style="display: none;">
+                <!-- Drag Handle Bars -->
+                <div class="sel-handle handle-nw" data-handle="nw"></div>
+                <div class="sel-handle handle-n" data-handle="n"></div>
+                <div class="sel-handle handle-ne" data-handle="ne"></div>
+                <div class="sel-handle handle-e" data-handle="e"></div>
+                <div class="sel-handle handle-se" data-handle="se"></div>
+                <div class="sel-handle handle-s" data-handle="s"></div>
+                <div class="sel-handle handle-sw" data-handle="sw"></div>
+                <div class="sel-handle handle-w" data-handle="w"></div>
+
+                <!-- Center Crosshair Handle -->
+                <div class="sel-center-handle" id="centerDragHandle" title="Drag to reposition">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </div>
+
+                <!-- Floating Dimension Pill -->
+                <div class="selection-badge" id="selectionBadge">
+                  <span class="badge-title" id="badgeTitle">Element</span>
+                  <span class="badge-coords" id="badgeCoords">X: 50% | Y: 20%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="device-home-bar"></div>
+        </div>
+      </div>
+
+      <!-- Quick Canvas HUD -->
+      <div class="canvas-hud">
+        <div class="hud-item" id="hudCoords">Cursor: 0%, 0%</div>
+        <div class="hud-item" id="hudStageSize">Stage: 360 × 640 px (9:16)</div>
+        <div class="hud-item hint">Click & drag element to move | Shift+Drag to lock axis | Arrow keys to nudge</div>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDEBAR: Coordinate & Property Inspector -->
+    <aside class="sidebar sidebar-right" id="sidebarRight">
+      <!-- Element Header Card -->
+      <div class="inspector-card element-meta-card">
+        <div class="element-type-row">
+          <span class="type-pill" id="insTypePill">No Selection</span>
+          <span class="element-id-label" id="insIdLabel">Select an element</span>
+        </div>
+        <div class="element-text-preview" id="insTextPreview">
+          Click an element on the canvas or from the layers panel to reposition it.
+        </div>
+      </div>
+
+      <div class="inspector-scroll-area">
+        <!-- POSITION SECTION (X & Y AXIS) -->
+        <div class="inspector-section">
+          <div class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="16"/>
+              <line x1="8" y1="12" x2="16" y2="12"/>
+            </svg>
+            Position & Coordinates
+          </div>
+
+          <!-- Target Orientation Tabs (active for SIP templates) -->
+          <div class="sip-orientation-tabs" id="sipOrientationTabs" style="display: none; margin-bottom: 14px;">
+            <div class="tab-label-sm">Active Orientation Target:</div>
+            <div class="sip-tab-group">
+              <button class="sip-tab active" data-orient="portrait" id="tabOrientPortrait">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/></svg>
+                Portrait
+              </button>
+              <button class="sip-tab" data-orient="landscape" id="tabOrientLandscape">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"/></svg>
+                Landscape
+              </button>
+            </div>
+            <div class="sip-info-note">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Dynamic Video JS Anchor: X/Y normalized 0.0 - 1.0</span>
+            </div>
+          </div>
+
+          <!-- X Axis -->
+          <div class="coord-field-group">
+            <div class="field-label-row">
+              <label for="inputXPercent" class="field-label">
+                <span class="axis-badge axis-x">X Axis</span>
+                <span class="sub-label">Horizontal Position</span>
+              </label>
+              <div class="pixel-indicator" id="xPixelIndicator">0 px</div>
+            </div>
+            <div class="input-with-stepper">
+              <input type="number" id="inputXPercent" class="num-input" step="0.1" min="-20" max="120" placeholder="50.0">
+              <span class="unit-tag">%</span>
+              <div class="step-buttons">
+                <button class="step-btn" data-axis="x" data-delta="-1" title="-1%">-1</button>
+                <button class="step-btn" data-axis="x" data-delta="-0.1" title="-0.1%">-0.1</button>
+                <button class="step-btn" data-axis="x" data-delta="0.1" title="+0.1%">+0.1</button>
+                <button class="step-btn" data-axis="x" data-delta="1" title="+1%">+1</button>
+              </div>
+            </div>
+            <input type="range" id="sliderX" class="range-slider" min="0" max="100" step="0.1">
+          </div>
+
+          <!-- Y Axis -->
+          <div class="coord-field-group">
+            <div class="field-label-row">
+              <label for="inputYPercent" class="field-label">
+                <span class="axis-badge axis-y">Y Axis</span>
+                <span class="sub-label">Vertical Position</span>
+              </label>
+              <div class="pixel-indicator" id="yPixelIndicator">0 px</div>
+            </div>
+            <div class="input-with-stepper">
+              <input type="number" id="inputYPercent" class="num-input" step="0.1" min="-20" max="120" placeholder="20.0">
+              <span class="unit-tag">%</span>
+              <div class="step-buttons">
+                <button class="step-btn" data-axis="y" data-delta="-1" title="-1%">-1</button>
+                <button class="step-btn" data-axis="y" data-delta="-0.1" title="-0.1%">-0.1</button>
+                <button class="step-btn" data-axis="y" data-delta="0.1" title="+0.1%">+0.1</button>
+                <button class="step-btn" data-axis="y" data-delta="1" title="+1%">+1</button>
+              </div>
+            </div>
+            <input type="range" id="sliderY" class="range-slider" min="0" max="100" step="0.1">
+          </div>
+
+          <!-- Width & Height -->
+          <div class="two-col-fields">
+            <div class="coord-field-group">
+              <div class="field-label-row">
+                <label for="inputWidth" class="field-label">Width</label>
+              </div>
+              <div class="input-with-unit">
+                <input type="text" id="inputWidth" class="num-input" placeholder="88%">
+              </div>
+            </div>
+            <div class="coord-field-group">
+              <div class="field-label-row">
+                <label for="inputHeight" class="field-label">Height</label>
+              </div>
+              <div class="input-with-unit">
+                <input type="text" id="inputHeight" class="num-input" placeholder="auto">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ALIGNMENT PRESETS -->
+        <div class="inspector-section">
+          <div class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="21" y1="10" x2="3" y2="10"/>
+              <line x1="21" y1="6" x2="3" y2="6"/>
+              <line x1="21" y1="14" x2="3" y2="14"/>
+              <line x1="21" y1="18" x2="3" y2="18"/>
+            </svg>
+            Quick Align & Centering
+          </div>
+          <div class="align-button-grid">
+            <button class="align-btn" id="btnAlignLeft" title="Align Left (X: 0%)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="4" x2="4" y2="20"/><rect x="8" y="7" width="12" height="10" rx="1"/></svg>
+              Left
+            </button>
+            <button class="align-btn" id="btnAlignCenterH" title="Center Horizontally (X: 50%)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><rect x="6" y="7" width="12" height="10" rx="1"/></svg>
+              Center H
+            </button>
+            <button class="align-btn" id="btnAlignRight" title="Align Right (X: 100%)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="20" y1="4" x2="20" y2="20"/><rect x="4" y="7" width="12" height="10" rx="1"/></svg>
+              Right
+            </button>
+            <button class="align-btn" id="btnAlignTop" title="Align Top (Y: 0%)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="4" x2="20" y2="4"/><rect x="7" y="8" width="10" height="12" rx="1"/></svg>
+              Top
+            </button>
+            <button class="align-btn" id="btnAlignCenterV" title="Center Vertically (Y: 50%)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="12" x2="22" y2="12"/><rect x="7" y="6" width="10" height="12" rx="1"/></svg>
+              Center V
+            </button>
+            <button class="align-btn" id="btnAlignBottom" title="Align Bottom (Y: 100%)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="20" x2="20" y2="20"/><rect x="7" y="4" width="10" height="12" rx="1"/></svg>
+              Bottom
+            </button>
+          </div>
+          <button class="btn btn-full-width btn-sm" id="btnCenterBoth">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+            </svg>
+            Center in Stage (X: 50%, Y: 50%)
+          </button>
+        </div>
+
+        <!-- TRANSFORM ANCHOR POINT -->
+        <div class="inspector-section">
+          <div class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <circle cx="12" cy="12" r="2"/>
+            </svg>
+            Anchor & Transform Origin
+          </div>
+          <div class="anchor-grid-wrapper">
+            <div class="anchor-grid">
+              <button class="anchor-point" data-origin="0 0" data-trans="translate(0, 0)" title="Top-Left (translate 0,0)"></button>
+              <button class="anchor-point" data-origin="50% 0" data-trans="translate(-50%, 0)" title="Top-Center (translate -50%, 0)"></button>
+              <button class="anchor-point" data-origin="100% 0" data-trans="translate(-100%, 0)" title="Top-Right (translate -100%, 0)"></button>
+              <button class="anchor-point" data-origin="0 50%" data-trans="translate(0, -50%)" title="Middle-Left (translate 0, -50%)"></button>
+              <button class="anchor-point active" data-origin="50% 50%" data-trans="translate(-50%, -50%)" title="Center (translate -50%, -50%)"></button>
+              <button class="anchor-point" data-origin="100% 50%" data-trans="translate(-100%, -50%)" title="Middle-Right (translate -100%, -50%)"></button>
+              <button class="anchor-point" data-origin="0 100%" data-trans="translate(0, -100%)" title="Bottom-Left (translate 0, -100%)"></button>
+              <button class="anchor-point" data-origin="50% 100%" data-trans="translate(-50%, -100%)" title="Bottom-Center (translate -50%, -100%)"></button>
+              <button class="anchor-point" data-origin="100% 100%" data-trans="translate(-100%, -100%)" title="Bottom-Right (translate -100%, -100%)"></button>
+            </div>
+            <div class="anchor-desc">
+              <span class="anchor-title" id="anchorLabel">Top-Center (translate -50%, 0)</span>
+              <span class="anchor-hint">Standard anchor for horizontal text blocks</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TYPOGRAPHY & APPEARANCE (Contextual) -->
+        <div class="inspector-section" id="secAppearance">
+          <div class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 7 4 4 20 4 20 7"/>
+              <line x1="9" y1="20" x2="15" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+            Typography & Style
+          </div>
+
+          <div class="two-col-fields">
+            <div class="coord-field-group">
+              <label for="inputFontSize" class="field-label">Font Size</label>
+              <input type="text" id="inputFontSize" class="num-input" placeholder="7.8cqmin">
+            </div>
+            <div class="coord-field-group">
+              <label for="selectFontWeight" class="field-label">Weight</label>
+              <select id="selectFontWeight" class="select-input">
+                <option value="400">Regular (400)</option>
+                <option value="500">Medium (500)</option>
+                <option value="600">SemiBold (600)</option>
+                <option value="700">Bold (700)</option>
+                <option value="800">ExtraBold (800)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="two-col-fields">
+            <div class="coord-field-group">
+              <label for="inputTextColor" class="field-label">Text Color</label>
+              <div class="color-picker-row">
+                <input type="color" id="pickerColor" class="color-swatch">
+                <input type="text" id="inputTextColor" class="num-input font-mono" placeholder="#fbf1da">
+              </div>
+            </div>
+            <div class="coord-field-group">
+              <label for="selectTextAlign" class="field-label">Align</label>
+              <select id="selectTextAlign" class="select-input">
+                <option value="center">Center</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="two-col-fields">
+            <div class="coord-field-group">
+              <label for="inputZIndex" class="field-label">Z-Index</label>
+              <input type="number" id="inputZIndex" class="num-input" placeholder="auto">
+            </div>
+            <div class="coord-field-group">
+              <label for="inputOpacity" class="field-label">Opacity</label>
+              <input type="number" id="inputOpacity" class="num-input" step="0.05" min="0" max="1" placeholder="1.0">
+            </div>
+          </div>
+        </div>
+
+        <!-- CODE INSPECTOR (CSS & JSON block) -->
+        <div class="inspector-section">
+          <div class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+            Generated Code Snippet
+          </div>
+          <div class="code-preview-box">
+            <div class="code-header">
+              <span>Inline Style / __layout_blocks</span>
+              <button id="btnCopySnippet" class="code-copy-btn" title="Copy snippet">Copy</button>
+            </div>
+            <pre class="code-block" id="snippetCodePreview">// Select an element to view code</pre>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- DIFF MODAL -->
+  <div class="modal-backdrop" id="diffModal">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+          </svg>
+          <h3>Review Layout Modifications</h3>
+        </div>
+        <button class="modal-close-btn" id="btnCloseDiff">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Summary of repositioned elements and coordinate changes compared to original:</p>
+        <div class="diff-table-container">
+          <table class="diff-table" id="diffTable">
+            <thead>
+              <tr>
+                <th>Element ID</th>
+                <th>Original Position</th>
+                <th>New Position</th>
+                <th>Δ Delta</th>
+                <th>JSON Block Sync</th>
+              </tr>
+            </thead>
+            <tbody id="diffTableBody">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelDiff">Close</button>
+        <button class="btn btn-primary" id="btnSaveFromDiff">Confirm & Save HTML</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT MODAL -->
+  <div class="modal-backdrop" id="exportModal">
+    <div class="modal-dialog modal-md">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          <h3>Export Repositioned Ad</h3>
+        </div>
+        <button class="modal-close-btn" id="btnCloseExport">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="export-options">
+          <div class="export-option-card" id="cardDownloadHtml">
+            <div class="export-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="12" y2="18"/>
+                <line x1="15" y1="15" x2="12" y2="18"/>
+              </svg>
+            </div>
+            <div class="export-info">
+              <h4 id="exportDownloadTitle">Download Repositioned HTML</h4>
+              <p>Save complete standalone HTML ad with updated coordinates</p>
+            </div>
+            <button class="btn btn-sm btn-primary" id="btnDownloadHtml">Download</button>
+          </div>
+
+          <div class="export-option-card" id="cardCopyHtml">
+            <div class="export-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </div>
+            <div class="export-info">
+              <h4>Copy Full HTML Code</h4>
+              <p>Copy entire HTML file content directly to clipboard</p>
+            </div>
+            <button class="btn btn-sm btn-secondary" id="btnCopyHtml">Copy HTML</button>
+          </div>
+
+          <div class="export-option-card" id="cardCopyJson">
+            <div class="export-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>
+              </svg>
+            </div>
+            <div class="export-info">
+              <h4>Copy __layout_blocks JSON</h4>
+              <p>Copy only the updated JSON metadata block</p>
+            </div>
+            <button class="btn btn-sm btn-secondary" id="btnCopyJson">Copy JSON</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelExport">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
