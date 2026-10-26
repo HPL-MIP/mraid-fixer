@@ -1699,94 +1699,66 @@
           }
         }());
 
-        /* CHECK 5 - MRAID v2.0 Click-Through Engine (mraid.open) */
+        /* CHECK 5 - Guarded MRAID click engine */
         (function () {
-          var hasOpen = /mraid\.open\s*\(/i.test(html);
-          var hasHandleMraidOpen = /handleMraidOpen/i.test(html);
-
+          // Upgrade engines produced by earlier versions of the fixer.
+          html = html.replace(/<script>\s*\/\* MRAID v2\.0 Compliant Click-Through Engine[\s\S]*?<\/[s]cript>/gi, '');
+          var renamed = [];
+          ['clickTag', 'clickTag1', 'clickthrough', 'clickThrough'].forEach(function (name, index) {
+            var callable = new RegExp('\\bfunction\\s+' + name + '\\s*\\(|\\b' + name + '\\s*=\\s*(?:function\\b|(?:async\\s+)?(?:\\([^)]*\\)|[\\w$]+)\\s*=>)');
+            if (!callable.test(html)) return;
+            var replacement = 'creativeTapHandler' + index;
+            while (html.indexOf(replacement) !== -1) replacement += '_';
+            function renameCode(code) {
+              return code.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\/\/[^\n]*|\/\*[\s\S]*?\*\/)|\b[A-Za-z_$][\w$]*\b/g, function (token, literal) {
+                return !literal && token === name ? replacement : token;
+              });
+            }
+            html = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (_, start, code, end) {
+              return start + renameCode(code) + end;
+            });
+            html = html.replace(/(\bon\w+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, attr, quote, code) {
+              return attr + quote + renameCode(code) + quote;
+            });
+            renamed.push(name + ' ? ' + replacement);
+          });
+          if (renamed.length) diff('Renamed callbacks reserved for click URLs', renamed.join(', '), 'Distinct creative callback names');
+          html = html.replace(/\bvar\s+mraid\s*=\s*window\.mraid\s*;/g, '');
+          // Route existing calls through the same guard, including empty-string calls.
+          html = html.replace(/\b(?:window\.)?mraid\.open\s*\(/g, 'window.openMraidDestination(');
           var CLICK_ENGINE = [
             '\x3cscript>',
-            '/* MRAID v2.0 Compliant Click-Through Engine (AppLovin MIP) - injected by MRAID Fixer */',
+            '/* MRAID v2.0 Compliant Click-Through Engine - injected by MRAID Fixer */',
             '(function(){',
             '  function getClickTarget(u){',
             '    return u||window.clickTag||window.clickTag1||window.clickthrough||window.clickThrough||"";',
             '  }',
-            '  window.handleMraidOpen=function(targetUrl){',
-            '    var mraid=window.mraid;',
-            '    var url=getClickTarget(targetUrl);',
-            '    if(mraid&&typeof mraid.open==="function"){',
-            '      var ready=true;',
-            '      if(typeof window.isMraidUsable==="function"){ready=window.isMraidUsable(mraid);}',
-            '      else if(typeof mraid.getState==="function"){var s=mraid.getState();ready=(s==="default"||s==="expanded");}',
-            '      if(!ready){console.warn("[MRAID] bridge is not ready, attempting open anyway");}',
-            '      try{',
-            '        mraid.open(url);',
-            '        return true;',
-            '      }catch(err){console.error("[MRAID] open threw",err);}',
-            '    }',
-            '    console.log("Network/browser fallback: ", url);',
-            '    return false;',
+            '  window.openMraidDestination=function(targetUrl){',
+            '    var clickTarget=getClickTarget(targetUrl);',
+            '    if (typeof clickTarget !== "string") return;',
+            '    if(typeof mraid==="undefined"||typeof mraid.open!=="function")return false;',
+            '    try{',
+            '      if(typeof mraid.getState==="function"&&mraid.getState()==="loading")return false;',
+            '      if(typeof window.isMraidUsable==="function"&&!window.isMraidUsable(mraid))return false;',
+            '      if(clickTarget){mraid.open(clickTarget);}else{mraid.open();}',
+            '      return true;',
+            '    }catch(err){console.error("[MRAID] open threw",err);return false;}',
             '  };',
-            '  window.handleClickAction=function(){return window.handleMraidOpen();};',
-            '  window["openClickThrough"]=window.handleClickAction;',
+            '  window.handleMraidOpen=function(targetUrl){return window.openMraidDestination(targetUrl);};',
+            '  window.handleClickAction=function(){return window.openMraidDestination();};',
             '})();',
             '\x3c/script>'
           ].join('\n');
-
-          var injectedEngine = false;
-          if (!hasOpen || !hasHandleMraidOpen) {
-            var INJ_POINT = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
-            if (INJ_POINT.test(html)) {
-              html = html.replace(INJ_POINT, function (m) { return m + '\n' + CLICK_ENGINE; });
-            } else if (/<head[^>]*>/i.test(html)) {
-              html = html.replace(/(<head[^>]*>)/i, '$1\n' + CLICK_ENGINE);
-            } else {
-              html = CLICK_ENGINE + '\n' + html;
-            }
-            diff('MRAID Click-Through: Injected compliant mraid.open() engine', '(no mraid.open() click-through / handleMraidOpen)', 'handleMraidOpen() + mraid.open() with guards & clickTag chain');
-            injectedEngine = true;
-          }
-
-          // ALWAYS scan and replace bare mraid.open() calls across the entire file in the same pass
-          var BARE_OPEN = /\bmraid\.open\s*\(\s*\)/g;
-          var bareCount = 0;
-          if (BARE_OPEN.test(html)) {
-            html = html.replace(BARE_OPEN, function () {
-              bareCount++;
-              return 'mraid.open(window.clickTag||window.clickTag1||window.clickthrough||window.clickThrough||"")';
-            });
-            diff('mraid.open(): Added missing URL parameter', bareCount + ' empty call(s)', 'mraid.open(clickTarget)');
-          }
-
-          if (injectedEngine && bareCount > 0) {
-            results.push({
-              id: 'open',
-              title: 'MRAID v2.0 Click-Through (mraid.open)',
-              desc: 'Injected AppLovin MIP-compliant handleMraidOpen() engine AND fixed ' + bareCount + ' bare mraid.open() call(s) missing destination URL parameter in a single pass.',
-              status: 'fixed'
-            });
-          } else if (injectedEngine) {
-            results.push({
-              id: 'open',
-              title: 'MRAID v2.0 Click-Through (mraid.open)',
-              desc: 'Injected AppLovin MIP-compliant handleMraidOpen() with mraid.open(), isMraidUsable() guard, try/catch, and clickTag chain. Resolves "mraid present but no mraid.open() click-through".',
-              status: 'fixed'
-            });
-          } else if (bareCount > 0) {
-            results.push({
-              id: 'open',
-              title: 'MRAID v2.0 Click-Through (mraid.open)',
-              desc: 'Fixed ' + bareCount + ' mraid.open() call(s) missing destination URL parameter.',
-              status: 'fixed'
-            });
+          var INJ_POINT = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
+          if (INJ_POINT.test(html)) {
+            html = html.replace(INJ_POINT, function (m) { return m + '\n' + CLICK_ENGINE; });
+          } else if (/<head[^>]*>/i.test(html)) {
+            html = html.replace(/(<head[^>]*>)/i, '$1\n' + CLICK_ENGINE);
           } else {
-            results.push({
-              id: 'open',
-              title: 'MRAID v2.0 Click-Through (mraid.open)',
-              desc: 'mraid.open() click-through routine is present and verified.',
-              status: 'pass'
-            });
+            html = CLICK_ENGINE + '\n' + html;
           }
+          diff('MRAID click handling', 'Existing click handling', 'String targets, global bridge, loading guard, and zero-argument fallback');
+          results.push({ id: 'open', title: 'MRAID Click Handling', desc: 'Installed guarded click handling; renamed ' + renamed.length + ' conflicting callback(s). Empty targets use mraid.open() with no arguments.', status: 'fixed' });
         }());
 
         /* CHECK 6 - ClickTag Fallback Chain */

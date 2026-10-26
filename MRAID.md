@@ -6,7 +6,7 @@ This document provides a comprehensive technical guide to the Mobile Rich Media 
 
 ## 1. Overview: How `mraid fixer.html` Fixes MRAID Creatives
 
-Ad networks (particularly AppLovin MIP) run strict static regex validators and automated runtime sandboxes on uploaded HTML playable ads. Common authoring errors—such as invoking `window.open()`, omitting the `mraid.js` script tag from `<head>`, linking to absolute CDN URLs, calling `mraid.open()` without arguments, using negated state checks, or failing to pause media when off-screen—cause immediate creative rejection.
+Ad networks (particularly AppLovin MIP) run strict static regex validators and automated runtime sandboxes on uploaded HTML playable ads. Common authoring errors—such as invoking `window.open()`, omitting the `mraid.js` script tag from `<head>`, linking to absolute CDN URLs, using callback names reserved for click URLs, using negated state checks, or failing to pause media when off-screen—cause immediate creative rejection.
 
 [`mraid fixer.html`](file:///c:/Users/Irvin%20Udang/Desktop/MRAID%20Fixer/mraid%20fixer.html) acts as a batch automated compliance and remediation engine. It runs non-destructive AST-like regex parsing and code rewriting directly in the browser via HTML5 `FileReader` and `Blob` APIs, producing validated `[filename]_mraid_fixed.html` creatives with full visual diff reporting.
 
@@ -168,54 +168,13 @@ The fixer engine executes 11 specialized checks in sequence. Below is how each c
 
 ---
 
-### Check 5: MRAID v2.0 Click-Through Engine (`handleMraidOpen`)
-* **Validator Rule**: The creative must provide a robust click-through mechanism invoking `mraid.open(targetUrl)` that resolves click targets and prevents runtime crashes.
-* **Violations Detected**:
-  1. No `mraid.open()` or `handleMraidOpen` defined anywhere in the creative.
-  2. Calling bare `mraid.open()` without passing a target URL string, which triggers network rejection.
-* **Automated Fix**:
-  1. **Bare Open Correction**: If `mraid.open()` is called with no arguments, it is automatically rewritten to pass the resolved fallback chain:
-     ```diff
-     - mraid.open();
-     + mraid.open(window.clickTag || window.clickTag1 || window.clickthrough || window.clickThrough || "");
-     ```
-  2. **Engine Injection**: If missing, injects the AppLovin MIP-compliant click-through engine into `<head>`:
-     ```html
-     <script>
-     /* MRAID v2.0 Compliant Click-Through Engine (AppLovin MIP) - injected by MRAID Fixer */
-     (function(){
-       function getClickTarget(u){
-         return u || window.clickTag || window.clickTag1 || window.clickthrough || window.clickThrough || "";
-       }
-       window.handleMraidOpen = function(targetUrl){
-         var mraid = window.mraid;
-         var url = getClickTarget(targetUrl);
-         if (mraid && typeof mraid.open === "function") {
-           var ready = true;
-           if (typeof window.isMraidUsable === "function") {
-             ready = window.isMraidUsable(mraid);
-           } else if (typeof mraid.getState === "function") {
-             var s = mraid.getState();
-             ready = (s === "default" || s === "expanded");
-           }
-           if (!ready) {
-             console.warn("[MRAID] bridge is not ready, attempting open anyway");
-           }
-           try {
-             mraid.open(url);
-             return true;
-           } catch(err) {
-             console.error("[MRAID] open threw", err);
-           }
-         }
-         console.log("Network/browser fallback: ", url);
-         return false;
-       };
-       window.handleClickAction = function(){ return window.handleMraidOpen(); };
-       window["openClickThrough"] = window.handleClickAction;
-     })();
-     </script>
-     ```
+### Check 5: Guarded MRAID Click Handling
+
+Creative callbacks must not be named `clickTag`, `clickTag1`, `clickthrough`, or `clickThrough`: these names are reserved for network-provided URL values. The fixer renames detected function declarations and function/arrow assignments, their script references, and inline event-handler references.
+
+Existing direct MRAID open calls are routed through `openMraidDestination`. Previously injected click engines are replaced on reprocessing. The handler resolves the URL fallback chain and rejects non-string targets with `if (typeof clickTarget !== "string") return;`.
+
+The handler calls the global `mraid.open`, without a local `var mraid = window.mraid` alias. It returns while `getState() === "loading"` or the readiness helper reports that the bridge is unusable. A nonempty string is passed as the destination; an empty target calls `mraid.open()` with **zero arguments**, never an empty-string argument. No click is queued during loading.
 
 ---
 
@@ -370,7 +329,7 @@ The fixer engine executes 11 specialized checks in sequence. Below is how each c
 | **Readiness** | Calling methods before ready | Guarded by `isMraidUsable()` | Injects `isMraidUsable` & `initializeWhenMraidReady` |
 | **State Regex** | `mraid.getState() !== "loading"` | `mraid.getState() === "loading"` | Flags warning for validator compliance |
 | **CTA Click Method** | `window.open(url)` | `mraid.open(url)` | Rewrites `window.open()` to `handleMraidOpen()` |
-| **Click Target** | Hardcoded or empty `mraid.open()` | Param or fallback chain | Injects `getClickTarget` fallback chain |
+| **Click Target** | Callback or other non-string value | String URL or zero-argument SDK fallback | Guards target type and bridge readiness |
 | **Click Engine** | Missing click handler | Standardized `handleMraidOpen` | Injects full `handleMraidOpen()` engine |
 | **Media Lifecycle** | Media plays in background | Pauses when `isViewable() === false` | Injects `viewableChange` audio/video pause sync |
 | **iOS Touch** | Rapid multi-fire events | 500ms tap deduplication | Validates `handleTap` debounce pattern |
@@ -408,7 +367,7 @@ Before publishing creatives fixed with [`mraid fixer.html`](file:///c:/Users/Irv
 - [x] Zero instances of `window.open()` exist in application code.
 - [x] Zero direct `location.href` or `location.assign()` external redirect calls.
 - [x] `handleMraidOpen()` wraps all CTA interactions.
-- [x] All `mraid.open()` calls supply a valid destination string from the `clickTag` chain.
+- [x] MRAID opens use a string destination or zero arguments, reject non-string targets, and do not run while loading.
 - [x] Initial loading states check `mraid.getState() === "loading"`.
 - [x] Audio and video elements pause when `mraid.isViewable()` returns `false`.
 - [x] Touch interactions implement debouncing for iOS Safari event sequences.

@@ -69,6 +69,30 @@
       let isDragging = false;
       let dragStart = {};
 
+      const mipRepositionTargets = [
+        ['.intro-copy', 'intro-copy'],
+        ['.intro-traits', 'intro-traits'],
+        ['.intro-copy-description', 'intro-copy-description'],
+        ['.tap-hand', 'tap-hand'],
+        ['.intro-orange-overlay', 'intro-orange-overlay'],
+        ['.prompt-row', 'prompt-row'],
+        ['.chat-bubble--incoming', 'chat-bubble--incoming'],
+        ['.profile-icon', 'profile-icon'],
+        ['.answer-stack', 'answer-stack'],
+        ['.answer-guide-hand', 'answer-guide-hand'],
+        ['.outgoing-row', 'outgoing-row'],
+        ['.chat-bubble--outgoing', 'chat-bubble--outgoing'],
+        ['.reply-row--typing', 'reply-row--typing'],
+        ['.reply-row:not(.reply-row--typing)', 'reply-row'],
+        ['.endcard-card', 'endcard-card'],
+        ['.endcard-logo', 'endcard-logo'],
+        ['.endcard-title', 'endcard-title'],
+        ['.endcard-subtitle', 'endcard-subtitle'],
+        ['.endcard-desc', 'endcard-desc'],
+        ['.endcard-cta-btn', 'endcard-cta-btn'],
+        ['.endcard-mascot', 'endcard-mascot']
+      ];
+
       function parsePercentVal(val, defaultVal = 50) {
         if (val === undefined || val === null || val === '') return defaultVal;
         const m = String(val).match(/([-\\d.]+)/);
@@ -118,6 +142,12 @@
       }
 
       function tagRepositionableElements() {
+        mipRepositionTargets.forEach(([selector, key]) => {
+          document.querySelectorAll(selector).forEach(el => {
+            el.setAttribute('data-reposition-key', key);
+          });
+        });
+
         const candidates = document.querySelectorAll('[data-block-id], [id], .tb, .rb, #ctaBtn, .strip, [id^="sip-"], h1, h2, h3, h4, h5, h6, p, button, a, img, svg, div');
         let autoIdx = 1;
         candidates.forEach(el => {
@@ -376,6 +406,8 @@
 
       setupGuides();
       tagRepositionableElements();
+      const observer = new MutationObserver(() => tagRepositionableElements());
+      observer.observe(document.documentElement, { childList: true, subtree: true });
       initPointerHandlers();
     })();
   `;
@@ -836,8 +868,8 @@
   function loadAdInIframe(htmlContent) {
     let processedHtml = htmlContent;
     if (processedHtml.includes('.useState("intro")') || processedHtml.includes('function es(){')) {
-      const mipRegex = /(\[([a-zA-Z0-9_$]+),\s*([a-zA-Z0-9_$]+)\]\s*=\s*[a-zA-Z0-9_$]+\.useState\(["']intro["']\))/g;
-      processedHtml = processedHtml.replace(mipRegex, '$1; window.__setCreativeScene = $3; window.__internalSetScene = $3; window.__currentScene = $2;');
+      const mipRegex = /((?:const|let|var)\s+[^;]*?\[([a-zA-Z0-9_$]+),\s*([a-zA-Z0-9_$]+)\]\s*=\s*[a-zA-Z0-9_$]+\.useState\(["']intro["']\)[^;]*;)/g;
+      processedHtml = processedHtml.replace(mipRegex, '$1 window.__setCreativeScene = $3; window.__internalSetScene = $3; window.__currentScene = $2;');
     }
     const injectedHtml = injectBridgeIntoHtml(processedHtml);
 
