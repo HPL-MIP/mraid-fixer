@@ -22,8 +22,8 @@ flowchart TD
         D1 --> D2["2. Readiness Guards: Inject isMraidUsable & initializeWhenMraidReady"]
         D2 --> D3["3. State Check: Verify mraid.getState() === 'loading' Compliance"]
         D3 --> D4["4. window.open Elimination: Rewrite to handleMraidOpen()"]
-        D4 --> D5["5. Click-Through Engine: Inject guarded mraid.open + clickTag Chain"]
-        D5 --> D6["6. ClickTag Normalization: clickTag || clickTag1 || clickthrough"]
+        D4 --> D5["5. Click-Through Engine: Inject guarded mraid.open + window.clickTag"]
+        D5 --> D6["6. Reserved Click Identifiers: Enforce single window.clickTag & rename clickTag1/clickthrough"]
         D6 --> D7["7. Media Viewability: Inject isViewable() & viewableChange Sync"]
         D7 --> D8["8. iOS Tap Deduplication: Validate 500ms Touch Debounce"]
         D8 --> D9["9. External Navigation Elimination: Rewrite location.href/assign/replace"]
@@ -178,12 +178,15 @@ The handler calls the global `mraid.open`, without a local `var mraid = window.m
 
 ---
 
-### Check 6: ClickTag Fallback Chain Normalization
-* **Validator Rule**: Different DSPs, SSPs, and SDKs inject click targets using variable property names (`clickTag`, `clickTag1`, `clickthrough`, or `clickThrough`).
-* **Automated Validation**:
-  - Scans for standard multi-network variable resolution.
-  - Guarantees that any CTA or converted `window.open` call evaluates the priority chain:
-    $$\text{Target} = \text{Param} \parallel \text{window.clickTag} \parallel \text{window.clickTag1} \parallel \text{window.clickthrough} \parallel \text{window.clickThrough} \parallel \text{""}$$
+### Check 6: Click Tracking (Reserved Names Compliance)
+* **Validator Rule**: Strict ad network validators (such as AppLovin MIP and major DSP sandboxes) enforce:
+  > *"Click tracking (reserved names) — reserved click identifier(s) clickTag1, clickthrough, clickThrough — only the platform's injected window.clickTag may appear; rename the rest or the tap won't redirect"*
+  Only the platform's injected `window.clickTag` is permitted to appear. Creative references to `clickTag1`, `clickthrough`, `clickThrough`, or multi-network fallback chains must not appear in the production ad.
+* **Automated Fix**:
+  - Normalizes click target fallback chains (`window.clickTag || window.clickTag1 || window.clickthrough...`) so only the platform's injected `window.clickTag` remains.
+  - Renames any other creative variable, property, or argument references (`clickTag1` $\rightarrow$ `creativeExitUrl1`, `clickthrough`/`clickThrough` $\rightarrow$ `creativeExitUrl`).
+  - Sanitizes comments to prevent naive regex scanners on ad platforms from triggering false-positive rejections.
+  - Injects `CLICK_ENGINE` using strictly `u || window.clickTag || ""` with zero forbidden identifiers.
 
 ---
 
@@ -331,6 +334,7 @@ The handler calls the global `mraid.open`, without a local `var mraid = window.m
 | **CTA Click Method** | `window.open(url)` | `mraid.open(url)` | Rewrites `window.open()` to `handleMraidOpen()` |
 | **Click Target** | Callback or other non-string value | String URL or zero-argument SDK fallback | Guards target type and bridge readiness |
 | **Click Engine** | Missing click handler | Standardized `handleMraidOpen` | Injects full `handleMraidOpen()` engine |
+| **Reserved Click Names** | `clickTag1`, `clickthrough`, `clickThrough` | Single `window.clickTag` | Normalizes fallback chains and renames reserved click identifiers |
 | **Media Lifecycle** | Media plays in background | Pauses when `isViewable() === false` | Injects `viewableChange` audio/video pause sync |
 | **iOS Touch** | Rapid multi-fire events | 500ms tap deduplication | Validates `handleTap` debounce pattern |
 | **Navigation Redirects** | `location.href = url` / `assign()` | `handleMraidOpen(url)` | Rewrites direct navigation to `handleMraidOpen()` |

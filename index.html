@@ -1731,7 +1731,7 @@
             '/* MRAID v2.0 Compliant Click-Through Engine - injected by MRAID Fixer */',
             '(function(){',
             '  function getClickTarget(u){',
-            '    return u||window.clickTag||window.clickTag1||window.clickthrough||window.clickThrough||"";',
+            '    return u||window.clickTag||"";',
             '  }',
             '  window.openMraidDestination=function(targetUrl){',
             '    var clickTarget=getClickTarget(targetUrl);',
@@ -1761,16 +1761,98 @@
           results.push({ id: 'open', title: 'MRAID Click Handling', desc: 'Installed guarded click handling; renamed ' + renamed.length + ' conflicting callback(s). Empty targets use mraid.open() with no arguments.', status: 'fixed' });
         }());
 
-        /* CHECK 6 - ClickTag Fallback Chain */
+        /* CHECK 6 - Click Tracking (Reserved Names Compliance) */
         (function () {
-          var FULL = /clickTag\s*\|\|\s*(?:window\.)?clickTag1\s*\|\|\s*(?:window\.)?(?:clickthrough|clickThrough)/i;
-          var ANY = /clickTag|clickthrough|clickThrough/i;
-          if (FULL.test(html)) {
-            results.push({ id: 'ct', title: 'ClickTag Fallback Chain', desc: 'Full chain: clickTag || clickTag1 || clickthrough || clickThrough confirmed.', status: 'pass' });
-          } else if (ANY.test(html)) {
-            results.push({ id: 'ct', title: 'ClickTag Fallback Chain', desc: 'Click target variables detected and normalized via handleMraidOpen chain.', status: 'pass' });
+          var detected = [];
+          var RESERVED_PATTERN = /\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/g;
+          var rawMatches = html.match(RESERVED_PATTERN);
+          if (rawMatches) {
+            rawMatches.forEach(function (m) {
+              if (detected.indexOf(m) === -1) detected.push(m);
+            });
+          }
+
+          var fixCount = 0;
+
+          // 1. Clean up fallback chains containing clickTag and reserved identifiers
+          var reTrailingFallback = /\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi;
+          if (reTrailingFallback.test(html)) {
+            html = html.replace(reTrailingFallback, function () {
+              fixCount++;
+              return '';
+            });
+          }
+
+          var reLeadingFallback = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b\s*\|\|\s*(?=(?:window\.)?clickTag\b)/gi;
+          if (reLeadingFallback.test(html)) {
+            html = html.replace(reLeadingFallback, function () {
+              fixCount++;
+              return '';
+            });
+          }
+
+          var reOrphanChain = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b(?:\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b)+/gi;
+          if (reOrphanChain.test(html)) {
+            html = html.replace(reOrphanChain, function () {
+              fixCount++;
+              return 'window.clickTag';
+            });
+          }
+
+          // 2. Bracket notation window["clickTag1"] / window['clickthrough']
+          var reBracket = /\bwindow\s*\[\s*(["'])(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\1\s*\]/gi;
+          if (reBracket.test(html)) {
+            html = html.replace(reBracket, function () {
+              fixCount++;
+              return 'window.clickTag';
+            });
+          }
+
+          // 3. Rename any remaining identifier occurrences in <script> and inline event handlers
+          function renameReservedTokens(code) {
+            return code.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\/\/[^\n]*|\/\*[\s\S]*?\*\/)|\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi, function (token, literal, ident) {
+              if (literal) {
+                if (literal.indexOf('//') === 0 || literal.indexOf('/*') === 0) {
+                  return literal
+                    .replace(/\bclickTag(\d+)\b/gi, function (_, n) { fixCount++; return 'creativeExitUrl' + n; })
+                    .replace(/\b(?:clickthrough|clickThrough|click_through)\b/gi, function () { fixCount++; return 'click target'; });
+                }
+                return token;
+              }
+              if (!ident) return token;
+              fixCount++;
+              var lower = ident.toLowerCase();
+              if (/^clicktag\d+$/i.test(lower)) {
+                var num = lower.replace(/^clicktag/, '');
+                return 'creativeExitUrl' + num;
+              }
+              return 'creativeExitUrl';
+            });
+          }
+
+          html = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (_, start, code, end) {
+            return start + renameReservedTokens(code) + end;
+          });
+          html = html.replace(/(\bon\w+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, attr, quote, code) {
+            return attr + quote + renameReservedTokens(code) + quote;
+          });
+
+          if (detected.length || fixCount > 0) {
+            var descList = detected.length ? detected.join(', ') : 'clickTag1, clickthrough, clickThrough';
+            diff('Click tracking (reserved names)', descList, 'Normalized to platform injected window.clickTag; renamed/removed reserved identifiers');
+            results.push({
+              id: 'ct',
+              title: 'Click Tracking (Reserved Names)',
+              desc: 'Resolved reserved click identifier(s) (' + descList + '). Only the platform\'s injected window.clickTag appears; renamed the rest so tap redirects successfully.',
+              status: 'fixed'
+            });
           } else {
-            results.push({ id: 'ct', title: 'ClickTag Fallback Chain', desc: 'ClickTag fallback chain integrated into MRAID click handler.', status: 'pass' });
+            results.push({
+              id: 'ct',
+              title: 'Click Tracking (Reserved Names)',
+              desc: 'Clean. Only platform window.clickTag is used; zero forbidden reserved click identifier(s) (clickTag1, clickthrough, clickThrough) detected.',
+              status: 'pass'
+            });
           }
         }());
 

@@ -1,4 +1,4 @@
-﻿const fs = require('node:fs');
+const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
@@ -63,6 +63,29 @@ test('reprocessing does not duplicate the engine or recurse', () => {
   sandbox.creativeTapHandler2();
   assert.deepEqual(calls, [[]]);
 });
+test('eliminates reserved click identifiers so only platform window.clickTag appears', () => {
+  const entry = {
+    origHTML: '<html><head></head><body><script>// Handles clickthrough\nfunction openStore() { var url = window.clickTag || window.clickTag1 || window.clickthrough || window.clickThrough || ""; mraid.open(url); }</script></body></html>'
+  };
+  context.runFix(entry);
+  const fixed = entry.fixedHTML;
+  assert.equal(fixed.match(/\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi), null);
+  assert.ok(fixed.includes('window.clickTag || ""'));
+  const ctCheck = entry.results.find(r => r.id === 'ct');
+  assert.ok(ctCheck);
+  assert.equal(ctCheck.status, 'fixed');
+  assert.match(ctCheck.desc, /Resolved reserved click identifier/);
+});
+test('renames standalone reserved variable identifiers without forbidden substrings', () => {
+  const entry = {
+    origHTML: '<html><head></head><body><script>var clickTag1 = "https://example.com"; function tap() { mraid.open(clickTag1); }</script></body></html>'
+  };
+  context.runFix(entry);
+  const fixed = entry.fixedHTML;
+  assert.equal(fixed.match(/\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi), null);
+  assert.ok(fixed.includes('creativeExitUrl1'));
+});
 test('application inline scripts parse', () => {
   for (const match of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) new vm.Script(match[1]);
 });
+
