@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 const initial = {
   project: null, variant: '', scene: '', positions: {}, selected: null, nodes: [],
@@ -158,14 +158,27 @@ export default function useEditor() {
     try {
       const response = await api('/api/import', { method: 'POST', body: file });
       dispatch({ type: 'import', project: await response.json(), filename: file.name || 'sample.zip' });
-    } catch (error) { reportError(error); }
+    } catch (error) {
+      if (typeof window !== 'undefined' && (window.location.hostname.includes('github.io') || !window.location.port)) {
+        reportError(new Error('Backend server is not active on this static preview. To parse and compile React projects, run locally with `start_app.bat` or `node server.cjs` (http://localhost:3100).'));
+      } else {
+        reportError(error);
+      }
+    }
     finally { importBusy.current = false; patch({ pending: false }); }
   }
 
   async function openSample() {
     try {
       patch({ status: 'Opening sample.zip…' });
-      const response = await api('/api/sample');
+      let response;
+      try {
+        response = await api('/api/sample');
+      } catch (err) {
+        const isDist = typeof window !== 'undefined' && window.location.pathname.includes('/dist');
+        response = await fetch(isDist ? '../sample.zip' : './sample.zip');
+        if (!response.ok) throw err;
+      }
       await importFile(new File([await response.blob()], 'sample.zip'));
     } catch (error) { reportError(error); }
   }

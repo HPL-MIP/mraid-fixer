@@ -1,9 +1,31 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useEditor from './useEditor.js';
 
 function TopBar({ state, chooseFile, exportFile }) {
+  const isDist = typeof window !== 'undefined' && window.location.pathname.includes('/dist');
+  const base = isDist ? '../../' : '../';
+
   return <header className="topbar">
     <div className="brand"><span className="brand-icon">↗</span><div><strong>MIP <span>REPOSITION STUDIO</span></strong><small>React creative workspace</small></div></div>
+
+    <nav className="hdr-nav" aria-label="Tool Navigation">
+      <a href={`${base}index.html`} className="hdr-nav-link" title="MRAID v2.0 Compliance Fixer">
+        <span className="nav-icon">🛡️</span> MRAID Fixer
+      </a>
+      <a href={`${base}compressor/index.html`} className="hdr-nav-link" title="Creative Compressor & Video Optimizer">
+        <span className="nav-icon">🗜️</span> Creative Compressor
+      </a>
+      <a href={`${base}date_manipulator/index.html`} className="hdr-nav-link" title="Dynamic Date, Time & Language Manipulator">
+        <span className="nav-icon">📅</span> Date Manipulator
+      </a>
+      <a href={`${base}reposition_app/index.html`} className="hdr-nav-link" title="MRAID & Banner Reposition Studio">
+        <span className="nav-icon">🎯</span> Reposition Studio
+      </a>
+      <a href="index.html" className="hdr-nav-link active" title="MIP Reposition Studio — React Creative Workspace">
+        <span className="nav-icon">↗️</span> MIP Studio
+      </a>
+    </nav>
+
     <div className="top-actions"><span id="projectName">{state.project?.name || 'No project loaded'}</span>
       <button id="importBtn" onClick={chooseFile} disabled={state.pending}>Import ZIP</button>
       <button id="exportBtn" className="primary" onClick={exportFile} disabled={!state.project || state.exporting}>{state.exporting ? 'Exporting…' : 'Export ZIP ↗'}</button>

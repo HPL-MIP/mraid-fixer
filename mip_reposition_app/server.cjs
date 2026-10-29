@@ -30,8 +30,14 @@ const server=http.createServer(async(req,res)=>{try{
       res.setHeader('Content-Disposition','attachment; filename="repositioned.zip"');return send(res,200,zip,'application/zip');
     }
   }
-  const staticFiles={'/':'index.html','/app.js':'app.js','/app.css':'app.css','/app.js.map':'app.js.map','/app.css.map':'app.css.map'};
+  const staticFiles={'/':'index.html','/index.html':'index.html','/dist/':'index.html','/dist/index.html':'index.html','/app.js':'app.js','/app.css':'app.css','/app.js.map':'app.js.map','/app.css.map':'app.css.map','/dist/app.js':'app.js','/dist/app.css':'app.css','/dist/app.js.map':'app.js.map','/dist/app.css.map':'app.css.map'};
   if(staticFiles[url.pathname])return send(res,200,fs.readFileSync(path.join(__dirname,'dist',staticFiles[url.pathname])),url.pathname.endsWith('.map')?'application/json':url.pathname.endsWith('.js')?'text/javascript; charset=utf-8':url.pathname.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8');
+  const parentFile = path.resolve(__dirname, '..' + url.pathname);
+  if (parentFile.startsWith(path.resolve(__dirname, '..')) && fs.existsSync(parentFile) && fs.statSync(parentFile).isFile()) {
+    const ext = path.extname(parentFile).toLowerCase();
+    const type = ext === '.html' ? 'text/html; charset=utf-8' : ext === '.js' ? 'text/javascript; charset=utf-8' : ext === '.css' ? 'text/css; charset=utf-8' : 'application/octet-stream';
+    return send(res, 200, fs.readFileSync(parentFile), type);
+  }
   send(res,404,{error:'Not found'});
 }catch(e){console.error(e.message);send(res,400,{error:e.message});}});
 require('./build.cjs')().then(() => {
