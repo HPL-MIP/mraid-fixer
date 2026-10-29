@@ -24,6 +24,9 @@ function TopBar({ state, chooseFile, exportFile }) {
       <a href="index.html" className="hdr-nav-link active" title="MIP Reposition Studio — React Creative Workspace">
         <span className="nav-icon">↗️</span> MIP Studio
       </a>
+      <a href={`${base}images_to_webp/index.html`} className="hdr-nav-link" title="Batch Images to WebP Converter">
+        <span className="nav-icon">🖼️</span> WebP Converter
+      </a>
     </nav>
 
     <div className="top-actions"><span id="projectName">{state.project?.name || 'No project loaded'}</span>
