@@ -9,10 +9,16 @@ const path = require('path');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
-// 1. Locate FFmpeg binary (uses ffmpeg-static if installed, or system ffmpeg)
+// 1. Locate FFmpeg binary (uses ffmpeg-engine resolver: local ffmpeg-static, global ffmpeg-static, or system PATH)
 let ffmpegBin = 'ffmpeg';
 try {
-  ffmpegBin = require('ffmpeg-static');
+  const ffmpegEngine = require('./ffmpeg-engine.cjs');
+  const status = ffmpegEngine.resolveFfmpeg();
+  if (status.installed && status.binaryPath) {
+    ffmpegBin = status.binaryPath;
+  } else {
+    ffmpegBin = require('ffmpeg-static');
+  }
 } catch (_) {
   // Falls back to system ffmpeg if ffmpeg-static is not in node_modules
 }

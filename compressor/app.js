@@ -14,6 +14,17 @@
     minifyCss: true,
     minifyJs: true,
     compressImages: true,
+    videoEngine: 'ffmpeg', // 'ffmpeg' (Native FFmpeg Binary H.264) | 'browser' (Canvas MediaRecorder)
+    ffmpegStatus: {
+      installed: false,
+      serverConnected: false,
+      apiBase: '',
+      binaryPath: null,
+      source: null,
+      version: null,
+      globalAvailable: false,
+      globalPath: null
+    },
     files: [], // Array of FileItem objects
   };
 
@@ -122,6 +133,270 @@
   const previewContainer = document.getElementById('previewContainer');
   const modalInspect = document.getElementById('modalInspect');
   const inspectBody = document.getElementById('inspectBody');
+  const modalFfmpeg = document.getElementById('modalFfmpeg');
+
+  // FFmpeg Binary UI Elements
+  const ffmpegEngineBar = document.getElementById('ffmpegEngineBar');
+  const ffmpegStatusDot = document.getElementById('ffmpegStatusDot');
+  const ffmpegStatusTitle = document.getElementById('ffmpegStatusTitle');
+  const ffmpegCodecBadge = document.getElementById('ffmpegCodecBadge');
+  const ffmpegStatusSub = document.getElementById('ffmpegStatusSub');
+  const btnModeFfmpeg = document.getElementById('btnModeFfmpeg');
+  const btnModeBrowser = document.getElementById('btnModeBrowser');
+  const btnInstallFfmpegQuick = document.getElementById('btnInstallFfmpegQuick');
+  const btnOpenFfmpegModal = document.getElementById('btnOpenFfmpegModal');
+  const btnRunFfmpegInstallModal = document.getElementById('btnRunFfmpegInstallModal');
+  const btnRefreshFfmpegStatus = document.getElementById('btnRefreshFfmpegStatus');
+  const ffmpegModalStateLabel = document.getElementById('ffmpegModalStateLabel');
+  const ffmpegModalGlobalBadge = document.getElementById('ffmpegModalGlobalBadge');
+  const ffmpegModalDetails = document.getElementById('ffmpegModalDetails');
+  const ffmpegPipelinePreview = document.getElementById('ffmpegPipelinePreview');
+
+  function updateFfmpegPipelineText() {
+    if (!ffmpegPipelinePreview) return;
+    const vf = state.scale < 0.999 ? ` -vf "scale=trunc(iw*${state.scale}/2)*2:trunc(ih*${state.scale}/2)*2"` : '';
+    const aud = state.stripAudio ? '-an' : '-c:a aac -b:a 96k';
+    ffmpegPipelinePreview.textContent = `ffmpeg -y -i input.mp4 -c:v libx264 -crf ${state.crf} -maxrate ${Math.round(state.bitrateKbps * 1.35)}k -preset slow${vf} -pix_fmt yuv420p -movflags +faststart ${aud} output.mp4`;
+  }
+
+  function renderFfmpegStatusUI() {
+    updateFfmpegPipelineText();
+    const st = state.ffmpegStatus;
+    const isNativeReady = st.serverConnected && st.installed;
+
+    if (ffmpegEngineBar) {
+      ffmpegEngineBar.classList.toggle('active-bin', isNativeReady && state.videoEngine === 'ffmpeg');
+    }
+    if (ffmpegStatusDot) {
+      ffmpegStatusDot.classList.toggle('online', isNativeReady);
+    }
+
+    if (btnModeFfmpeg) btnModeFfmpeg.classList.toggle('active', state.videoEngine === 'ffmpeg');
+    if (btnModeBrowser) btnModeBrowser.classList.toggle('active', state.videoEngine === 'browser');
+
+    if (isNativeReady) {
+      if (ffmpegStatusTitle) {
+        ffmpegStatusTitle.textContent = state.videoEngine === 'ffmpeg'
+          ? '🟢 Native FFmpeg Binary Enabled (Global + Local)'
+          : '🟢 FFmpeg Binary Installed (Browser Mode Selected)';
+      }
+      if (ffmpegCodecBadge) {
+        ffmpegCodecBadge.className = 'pss-badge badge-green';
+        ffmpegCodecBadge.textContent = state.videoEngine === 'ffmpeg'
+          ? '🚀 libx264 • H.264 CRF ' + state.crf + ' • yuv420p'
+          : '🌐 MediaRecorder Active';
+      }
+      if (ffmpegStatusSub) {
+        ffmpegStatusSub.textContent = `Binary: ${st.binaryPath} ${st.globalAvailable ? '• Global CLI: ENABLED (' + (st.globalPath || 'ffmpeg') + ')' : ''}`;
+      }
+      if (btnInstallFfmpegQuick) {
+        btnInstallFfmpegQuick.textContent = '✓ FFmpeg Installed & Enabled';
+      }
+      if (ffmpegModalStateLabel) ffmpegModalStateLabel.textContent = '✅ Native FFmpeg Binary Active & Globally Installed';
+      if (ffmpegModalGlobalBadge) {
+        ffmpegModalGlobalBadge.className = 'pss-badge badge-green';
+        ffmpegModalGlobalBadge.textContent = st.globalAvailable ? 'Global PATH + Local Ready' : 'Local Binary Ready';
+      }
+      if (ffmpegModalDetails) {
+        ffmpegModalDetails.innerHTML =
+          `<strong>Version:</strong> ${escapeHtml(st.version || 'FFmpeg 6.x')}<br>` +
+          `<strong>Binary Path:</strong> ${escapeHtml(st.binaryPath || '')}<br>` +
+          `<strong>Global CLI Path:</strong> ${escapeHtml(st.globalPath || 'ffmpeg')}<br>` +
+          `<strong>Source:</strong> ${escapeHtml(st.source || 'ffmpeg-static')} &bull; <strong>H.264 (libx264):</strong> Enabled`;
+      }
+    } else if (st.serverConnected && !st.installed) {
+      if (ffmpegStatusTitle) ffmpegStatusTitle.textContent = '🟡 Local Server Connected — FFmpeg Binary Not Installed';
+      if (ffmpegCodecBadge) {
+        ffmpegCodecBadge.className = 'pss-badge badge-amber';
+        ffmpegCodecBadge.textContent = 'Click Install FFmpeg';
+      }
+      if (ffmpegStatusSub) {
+        ffmpegStatusSub.textContent = 'Click "⚡ Install / Enable FFmpeg" to automatically install ffmpeg-static globally and locally.';
+      }
+      if (btnInstallFfmpegQuick) {
+        btnInstallFfmpegQuick.textContent = '⚡ Install / Enable FFmpeg';
+      }
+      if (ffmpegModalStateLabel) ffmpegModalStateLabel.textContent = '⚠️ FFmpeg Binary Not Yet Installed';
+      if (ffmpegModalGlobalBadge) {
+        ffmpegModalGlobalBadge.className = 'pss-badge badge-amber';
+        ffmpegModalGlobalBadge.textContent = 'Ready to Install';
+      }
+      if (ffmpegModalDetails) {
+        ffmpegModalDetails.textContent = 'Click "⚡ Install & Enable FFmpeg (Global + Local)" below to download and register the FFmpeg binary.';
+      }
+    } else {
+      if (ffmpegStatusTitle) ffmpegStatusTitle.textContent = '⚡ FFmpeg Binary Installed Globally (Start Local Server for Bridge)';
+      if (ffmpegCodecBadge) {
+        ffmpegCodecBadge.className = 'pss-badge badge-blue';
+        ffmpegCodecBadge.textContent = 'Fallback: Browser MediaRecorder';
+      }
+      if (ffmpegStatusSub) {
+        ffmpegStatusSub.textContent = 'Global FFmpeg is installed (C:\\nvm4w\\nodejs\\ffmpeg.exe). Run compressor/start_app.bat or node compressor/server.js to connect browser directly to native FFmpeg.';
+      }
+      if (btnInstallFfmpegQuick) {
+        btnInstallFfmpegQuick.textContent = '🚀 Connect / Enable FFmpeg';
+      }
+      if (ffmpegModalStateLabel) ffmpegModalStateLabel.textContent = 'ℹ️ Static Browser Mode — Start Local FFmpeg Bridge Server';
+      if (ffmpegModalGlobalBadge) {
+        ffmpegModalGlobalBadge.className = 'pss-badge badge-blue';
+        ffmpegModalGlobalBadge.textContent = 'Global CLI Ready';
+      }
+      if (ffmpegModalDetails) {
+        ffmpegModalDetails.innerHTML =
+          `FFmpeg is installed globally (<code>C:\\nvm4w\\nodejs\\ffmpeg.exe</code>) and locally in <code>compressor/node_modules/ffmpeg-static</code>.<br>` +
+          `To let the browser invoke the native <code>ffmpeg.exe</code> binary directly, start the local server with <code>node compressor/server.js</code> or <code>compressor/start_app.bat</code> and click <strong>Re-verify Binary Status</strong>.`;
+      }
+    }
+  }
+
+  async function checkFfmpegServerStatus(silent = true) {
+    const candidateBases = [];
+    if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+      candidateBases.push('');
+    }
+    candidateBases.push('http://localhost:3200', 'http://127.0.0.1:3200', 'http://localhost:3100', 'http://127.0.0.1:3100');
+
+    for (const base of candidateBases) {
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 1800);
+        const res = await fetch(`${base}/api/ffmpeg/status`, { signal: controller.signal });
+        clearTimeout(t);
+        if (res.ok) {
+          const data = await res.json();
+          state.ffmpegStatus = {
+            ...data,
+            serverConnected: true,
+            apiBase: base
+          };
+          if (data.installed) {
+            state.videoEngine = 'ffmpeg';
+          }
+          renderFfmpegStatusUI();
+          if (!silent) {
+            showToast(data.installed ? '🚀 Native FFmpeg Binary connected & enabled!' : '⚠️ Connected to server. Click Install FFmpeg.');
+          }
+          return true;
+        }
+      } catch (_) {}
+    }
+
+    state.ffmpegStatus.serverConnected = false;
+    renderFfmpegStatusUI();
+    if (!silent) {
+      showToast('ℹ️ Local FFmpeg server not detected on :3200/:3100. Run node compressor/server.js');
+    }
+    return false;
+  }
+
+  async function triggerFfmpegInstall() {
+    const connected = await checkFfmpegServerStatus(true);
+    if (!connected) {
+      if (modalFfmpeg) modalFfmpeg.classList.add('active');
+      showToast('Start node compressor/server.js or use the Global Install command in the dialog');
+      return;
+    }
+
+    if (btnInstallFfmpegQuick) {
+      btnInstallFfmpegQuick.disabled = true;
+      btnInstallFfmpegQuick.textContent = '⏳ Installing FFmpeg…';
+    }
+    if (btnRunFfmpegInstallModal) {
+      btnRunFfmpegInstallModal.disabled = true;
+      btnRunFfmpegInstallModal.textContent = '⏳ Installing Global + Local FFmpeg…';
+    }
+    showToast('⏳ Installing & enabling FFmpeg binary globally and locally…');
+
+    try {
+      const res = await fetch(`${state.ffmpegStatus.apiBase}/api/ffmpeg/install`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'FFmpeg installation failed');
+      }
+      state.ffmpegStatus = {
+        ...data.status,
+        serverConnected: true,
+        apiBase: state.ffmpegStatus.apiBase
+      };
+      state.videoEngine = 'ffmpeg';
+      renderFfmpegStatusUI();
+      showToast('✅ FFmpeg Binary installed & enabled globally and locally!');
+    } catch (err) {
+      showToast('❌ ' + (err.message || 'FFmpeg installation error'));
+    } finally {
+      if (btnInstallFfmpegQuick) btnInstallFfmpegQuick.disabled = false;
+      if (btnRunFfmpegInstallModal) {
+        btnRunFfmpegInstallModal.disabled = false;
+        btnRunFfmpegInstallModal.textContent = '⚡ Install & Enable FFmpeg (Global + Local)';
+      }
+      renderFfmpegStatusUI();
+    }
+  }
+
+  if (btnModeFfmpeg) {
+    btnModeFfmpeg.addEventListener('click', async () => {
+      state.videoEngine = 'ffmpeg';
+      await checkFfmpegServerStatus(true);
+      renderFfmpegStatusUI();
+      if (state.ffmpegStatus.serverConnected && state.ffmpegStatus.installed) {
+        showToast('🚀 Switched to Native FFmpeg Binary (libx264 H.264 CRF)');
+      } else {
+        showToast('🚀 Native FFmpeg selected (will use FFmpeg server if active, or fallback)');
+      }
+      onSettingsChanged();
+    });
+  }
+
+  if (btnModeBrowser) {
+    btnModeBrowser.addEventListener('click', () => {
+      state.videoEngine = 'browser';
+      renderFfmpegStatusUI();
+      showToast('🌐 Switched to In-Browser MediaRecorder Transcoder');
+      onSettingsChanged();
+    });
+  }
+
+  if (btnInstallFfmpegQuick) {
+    btnInstallFfmpegQuick.addEventListener('click', () => {
+      if (state.ffmpegStatus.serverConnected && state.ffmpegStatus.installed) {
+        if (modalFfmpeg) modalFfmpeg.classList.add('active');
+      } else {
+        triggerFfmpegInstall();
+      }
+    });
+  }
+
+  if (btnOpenFfmpegModal) {
+    btnOpenFfmpegModal.addEventListener('click', () => {
+      checkFfmpegServerStatus(true);
+      if (modalFfmpeg) modalFfmpeg.classList.add('active');
+    });
+  }
+
+  if (btnRunFfmpegInstallModal) {
+    btnRunFfmpegInstallModal.addEventListener('click', triggerFfmpegInstall);
+  }
+
+  if (btnRefreshFfmpegStatus) {
+    btnRefreshFfmpegStatus.addEventListener('click', () => checkFfmpegServerStatus(false));
+  }
+
+  document.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cmd = btn.getAttribute('data-copy');
+      if (navigator.clipboard && cmd) {
+        navigator.clipboard.writeText(cmd).then(() => {
+          showToast('📋 Copied command to clipboard!');
+        });
+      }
+    });
+  });
+
+  // Auto-probe FFmpeg Binary status on startup
+  checkFfmpegServerStatus(true);
 
   // Notification Toast Helper
   function showToast(msg) {
@@ -142,6 +417,7 @@
   }
 
   function onSettingsChanged() {
+    renderFfmpegStatusUI();
     renderQueue();
     if (state.files.some(f => f.status === 'completed')) {
       showToast('Settings updated! Click "Re-compress" to apply changes.');
@@ -688,8 +964,41 @@
     if (pct) pct.textContent = item.progress + '%';
   }
 
-  // In-Browser Video Transcoder via MediaRecorder with Watchdog Timeout
+  // Video Transcoder: Uses Native FFmpeg Binary (libx264 H.264 CRF) when enabled & connected, with In-Browser MediaRecorder fallback
   async function transcodeBase64Video(b64, mime, options) {
+    // 1. Try Native FFmpeg Binary Engine first if selected
+    if (state.videoEngine === 'ffmpeg') {
+      if (!state.ffmpegStatus.serverConnected) {
+        await checkFfmpegServerStatus(true);
+      }
+      if (state.ffmpegStatus.serverConnected && state.ffmpegStatus.installed) {
+        try {
+          const res = await fetch(`${state.ffmpegStatus.apiBase}/api/ffmpeg/transcode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              b64: b64,
+              mime: mime,
+              crf: state.crf,
+              bitrateKbps: options.bitrateKbps,
+              scale: options.scale,
+              stripAudio: options.stripAudio,
+              preset: 'slow'
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.b64 && data.b64.length > 100) {
+              return { b64: data.b64, mime: data.mime || 'mp4', engine: 'ffmpeg' };
+            }
+          }
+        } catch (_) {
+          // Fall through to browser MediaRecorder fallback
+        }
+      }
+    }
+
+    // 2. Fallback: In-Browser Video Transcoder via MediaRecorder with Watchdog Timeout
     return new Promise((resolve) => {
       let resolved = false;
       function done(res) {
@@ -770,14 +1079,36 @@
             if (e.data && e.data.size > 0) chunks.push(e.data);
           };
 
+          let animId;
+          let intervalId;
+          let framesDrawn = 0;
+          function drawFrame() {
+            if (video.paused || video.ended) return;
+            try {
+              ctx.drawImage(video, 0, 0, targetW, targetH);
+              framesDrawn++;
+            } catch (_) {}
+          }
+          function rafLoop() {
+            if (video.paused || video.ended) return;
+            drawFrame();
+            animId = requestAnimationFrame(rafLoop);
+          }
+
           recorder.onstop = () => {
             clearTimeout(timer);
+            cancelAnimationFrame(animId);
+            clearInterval(intervalId);
             URL.revokeObjectURL(videoUrl);
-            if (chunks.length === 0) {
+            if (chunks.length === 0 || framesDrawn < 2) {
               done({ b64: b64, mime: mime });
               return;
             }
             const outBlob = new Blob(chunks, { type: recMime });
+            if (outBlob.size < 1024) {
+              done({ b64: b64, mime: mime });
+              return;
+            }
             const reader = new FileReader();
             reader.onloadend = () => {
               const dataUrl = reader.result;
@@ -788,15 +1119,9 @@
             reader.readAsDataURL(outBlob);
           };
 
-          let animId;
-          function drawFrame() {
-            if (video.paused || video.ended) return;
-            ctx.drawImage(video, 0, 0, targetW, targetH);
-            animId = requestAnimationFrame(drawFrame);
-          }
-
           video.onended = () => {
             cancelAnimationFrame(animId);
+            clearInterval(intervalId);
             setTimeout(() => {
               if (recorder.state === 'recording') recorder.stop();
             }, 100);
@@ -804,15 +1129,23 @@
 
           video.onerror = () => {
             clearTimeout(timer);
+            cancelAnimationFrame(animId);
+            clearInterval(intervalId);
             URL.revokeObjectURL(videoUrl);
             done({ b64: b64, mime: mime });
           };
 
+          try {
+            ctx.drawImage(video, 0, 0, targetW, targetH);
+          } catch (_) {}
           recorder.start(100);
           video.play().then(() => {
-            drawFrame();
+            rafLoop();
+            intervalId = setInterval(drawFrame, Math.round(1000 / fps));
           }).catch(() => {
             clearTimeout(timer);
+            cancelAnimationFrame(animId);
+            clearInterval(intervalId);
             URL.revokeObjectURL(videoUrl);
             done({ b64: b64, mime: mime });
           });
@@ -862,19 +1195,36 @@
     });
   }
 
-  // Safe HTML Minification Engine (removes redundant whitespace & comments, never smashes inline text)
+  // Safe HTML Minification Engine (removes redundant whitespace & comments outside <script>/<style>/<pre>/<textarea>)
   function minifyHtmlMarkup(html) {
-    return html
+    const protectedBlocks = [];
+    const masked = html.replace(/<(script|style|pre|textarea)\b[^>]*>[\s\S]*?<\/\1>/gi, (match) => {
+      const idx = protectedBlocks.length;
+      protectedBlocks.push(match);
+      return `\x00__HTML_PROT_${idx}__\x00`;
+    });
+
+    const cleaned = masked
       .replace(/<!--(?!\s*\[if[\s\S]+?\])(?!\s*mraid[\s\S]*?)[\s\S]*?-->/gi, '')
       .replace(/[\r\n]{2,}/g, '\n')
       .replace(/^[ \t]+/gm, '')
       .replace(/[ \t]+$/gm, '')
       .trim();
+
+    return cleaned.replace(/\x00__HTML_PROT_(\d+)__\x00/g, (_, idx) => protectedBlocks[Number(idx)]);
   }
 
-  // Safe CSS Minification Engine (protects strings and url(), preserves calc() + and - spaces, keyframe 0%)
+  // Safe CSS Minification Engine (skips <script> blocks, protects strings and url(), preserves calc() + and - spaces)
   function minifyInlineCss(html) {
-    return html.replace(/<style([^>]*)>([\s\S]*?)<\/style>/gi, (match, attrs, css) => {
+    const scriptBlocks = [];
+    const maskedHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (match) => {
+      const idx = scriptBlocks.length;
+      scriptBlocks.push(match);
+      return `\x00__CSS_SCRIPT_PROT_${idx}__\x00`;
+    });
+
+    const minifiedHtml = maskedHtml.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (match, attrs, css) => {
+      const cssTokens = [];
       let cleaned = '';
       let i = 0;
       const len = css.length;
@@ -894,37 +1244,51 @@
           continue;
         }
 
-        // Preserve strings "..." and '...'
+        // Preserve strings "..." and '...' via token vault
         if (ch === '"' || ch === "'") {
           const q = ch;
-          cleaned += q;
+          let str = q;
           i++;
           while (i < len) {
             const c = css[i];
-            cleaned += c;
+            str += c;
             i++;
             if (c === '\\' && i < len) {
-              cleaned += css[i];
+              str += css[i];
               i++;
             } else if (c === q) {
               break;
             }
           }
+          const idx = cssTokens.length;
+          cssTokens.push(str);
+          cleaned += `\x00__CSS_TOK_${idx}__\x00`;
           continue;
         }
 
-        // Preserve url(...)
+        // Preserve url(...) via token vault
         if (css.slice(i, i + 4).toLowerCase() === 'url(') {
-          cleaned += css.slice(i, i + 4);
+          let urlStr = css.slice(i, i + 4);
           i += 4;
-          while (i < len && css[i] !== ')') {
-            cleaned += css[i];
+          let inQuote = null;
+          while (i < len) {
+            const c = css[i];
+            urlStr += c;
             i++;
+            if (c === '\\' && i < len) {
+              urlStr += css[i];
+              i++;
+            } else if (inQuote) {
+              if (c === inQuote) inQuote = null;
+            } else if (c === '"' || c === "'") {
+              inQuote = c;
+            } else if (c === ')') {
+              break;
+            }
           }
-          if (i < len && css[i] === ')') {
-            cleaned += ')';
-            i++;
-          }
+          const idx = cssTokens.length;
+          cssTokens.push(urlStr);
+          cleaned += `\x00__CSS_TOK_${idx}__\x00`;
           continue;
         }
 
@@ -936,19 +1300,79 @@
         .replace(/\s+/g, ' ')
         .replace(/\s*([{};,])\s*/g, '$1')
         .replace(/;}/g, '}')
-        .trim();
+        .trim()
+        .replace(/\x00__CSS_TOK_(\d+)__\x00/g, (_, idx) => cssTokens[Number(idx)]);
 
       return `<style${attrs}>${minCss}</style>`;
     });
+
+    return minifiedHtml.replace(/\x00__CSS_SCRIPT_PROT_(\d+)__\x00/g, (_, idx) => scriptBlocks[Number(idx)]);
   }
 
-  // Safe JS Minification Engine (full character scanner: protects base64, URLs, regexes, strings, ASI)
+  // Safe JS Minification Engine (full lexical scanner: protects base64, URLs, regexes after keywords/operators, strings, template expressions, ASI)
+  const JS_REGEX_PRECEDING_KEYWORDS = new Set([
+    'return', 'case', 'throw', 'else', 'do', 'typeof', 'void', 'delete', 'in', 'of', 'yield', 'await'
+  ]);
+
+  function canStartRegexInJs(resultSoFar) {
+    let j = resultSoFar.length - 1;
+    while (j >= 0 && /\s/.test(resultSoFar[j])) j--;
+    if (j < 0) return true;
+    const ch = resultSoFar[j];
+    if (/[=([,:!?&|;{}~^+\-*\/%<>]/.test(ch)) return true;
+    if (/[a-zA-Z_$]/.test(ch)) {
+      let end = j + 1;
+      while (j >= 0 && /[a-zA-Z0-9_$]/.test(resultSoFar[j])) j--;
+      const word = resultSoFar.slice(j + 1, end);
+      const beforeWord = j >= 0 ? resultSoFar[j] : '';
+      if (beforeWord !== '.' && JS_REGEX_PRECEDING_KEYWORDS.has(word)) return true;
+    }
+    return false;
+  }
+
   function safeMinifyJs(code) {
     let result = '';
     let i = 0;
     const len = code.length;
 
-    while (i < len) {
+    function scanTemplate() {
+      result += '`';
+      i++;
+      while (i < len) {
+        const c = code[i];
+        if (c === '\\' && i + 1 < len) {
+          result += c + code[i + 1];
+          i += 2;
+          continue;
+        }
+        if (c === '`') {
+          result += '`';
+          i++;
+          break;
+        }
+        if (c === '$' && code[i + 1] === '{') {
+          result += '${';
+          i += 2;
+          let depth = 1;
+          while (i < len && depth > 0) {
+            if (code[i] === '{') {
+              depth++;
+              result += code[i++];
+            } else if (code[i] === '}') {
+              depth--;
+              result += code[i++];
+            } else {
+              scanStep();
+            }
+          }
+          continue;
+        }
+        result += c;
+        i++;
+      }
+    }
+
+    function scanStep() {
       const ch = code[i];
       const next = code[i + 1];
 
@@ -959,7 +1383,7 @@
           i++;
         }
         result += '\n'; // Preserve newline for ASI
-        continue;
+        return;
       }
 
       // 2. Multi-line comment /* */
@@ -970,9 +1394,9 @@
           if (code[i] === '\n') hasNewline = true;
           i++;
         }
-        i += 2; // skip */
+        if (i < len) i += 2; // skip */
         result += hasNewline ? '\n' : ' ';
-        continue;
+        return;
       }
 
       // 3. Single-quote string '...'
@@ -990,7 +1414,7 @@
             break;
           }
         }
-        continue;
+        return;
       }
 
       // 4. Double-quote string "..."
@@ -1008,32 +1432,18 @@
             break;
           }
         }
-        continue;
+        return;
       }
 
       // 5. Template literal string `...`
       if (ch === '`') {
-        result += ch;
-        i++;
-        while (i < len) {
-          const c = code[i];
-          result += c;
-          i++;
-          if (c === '\\' && i < len) {
-            result += code[i];
-            i++;
-          } else if (c === '`') {
-            break;
-          }
-        }
-        continue;
+        scanTemplate();
+        return;
       }
 
       // 6. Regex literal /.../
-      if (ch === '/') {
-        const prevNonWs = result.trimEnd().slice(-1);
-        const isRegex = !prevNonWs || /[=([,:!?&|;{}~^+\-*\/]/.test(prevNonWs);
-        if (isRegex) {
+      if (ch === '/' && next !== '/' && next !== '*') {
+        if (canStartRegexInJs(result)) {
           result += ch;
           i++;
           let inCharClass = false;
@@ -1054,14 +1464,20 @@
                 i++;
               }
               break;
+            } else if (c === '\n' || c === '\r') {
+              break;
             }
           }
-          continue;
+          return;
         }
       }
 
       result += ch;
       i++;
+    }
+
+    while (i < len) {
+      scanStep();
     }
 
     return result
@@ -1072,9 +1488,25 @@
   }
 
   function minifyInlineJs(html) {
-    return html.replace(/<script([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, js) => {
-      if (/src\s*=/i.test(attrs)) return match;
+    return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, js) => {
+      if (/\bsrc\s*=/i.test(attrs)) return match;
+      const typeMatch = attrs.match(/\btype\s*=\s*(?:["']([^"']*)["']|([^\s>]+))/i);
+      if (typeMatch) {
+        const t = (typeMatch[1] || typeMatch[2] || '').trim().toLowerCase();
+        if (t && t !== 'text/javascript' && t !== 'application/javascript' && t !== 'module') {
+          return match;
+        }
+      }
       const minJs = safeMinifyJs(js);
+      // Syntax safety check for classic scripts: never replace valid JS with broken JS
+      const isModule = typeMatch && (typeMatch[1] || typeMatch[2] || '').trim().toLowerCase() === 'module';
+      if (!isModule) {
+        try {
+          new Function(minJs);
+        } catch (_) {
+          return match;
+        }
+      }
       return `<script${attrs}>${minJs}</script>`;
     });
   }
@@ -1377,6 +1809,7 @@
       if (e.target === elem || elem.classList.contains('modal-close')) {
         if (modalPreview) modalPreview.classList.remove('active');
         if (modalInspect) modalInspect.classList.remove('active');
+        if (modalFfmpeg) modalFfmpeg.classList.remove('active');
         if (previewIframe) previewIframe.srcdoc = '';
       }
     });
@@ -1386,6 +1819,7 @@
     if (e.key === 'Escape') {
       if (modalPreview) modalPreview.classList.remove('active');
       if (modalInspect) modalInspect.classList.remove('active');
+      if (modalFfmpeg) modalFfmpeg.classList.remove('active');
     }
   });
 

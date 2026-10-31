@@ -1153,7 +1153,9 @@
         <a href="images_to_webp/index.html" class="hdr-nav-link" title="Batch Images to WebP Converter">
           <span class="nav-icon">🖼️</span> WebP Converter
         </a>
-      </nav>
+        <a href="media_to_base64/index.html" class="hdr-nav-link" title="Batch Media to Base64 Converter">
+          <span class="nav-icon">🔤</span> Base64 Studio
+        </a>      </nav>
 
       <div class="hdr-right">
         <div class="hdr-badge">v2.0 Compliant</div>
@@ -1520,41 +1522,279 @@
          parser does not see closing script tag and close our block early.
       ============================================================== */
       function runFix(entry) {
-        var html = entry.origHTML, results = [], diffs = [];
+        var rawOrigHTML = entry.origHTML, results = [], diffs = [];
         function diff(lbl, before, after) { diffs.push({ label: lbl, before: before, after: after }); }
+
+        // 0. Protect embedded Base64 / Base122 payloads from any accidental regex matches or backtracking
+        var b64Vault = [];
+        var html = rawOrigHTML.replace(/(data:[a-zA-Z0-9.+/-]+(?:;[a-zA-Z0-9.+-]+=[^;,]+)*;(?:base64|base122),)([A-Za-z0-9+/=_-]{64,})/g, function (_, prefix, payload) {
+          var idx = b64Vault.length;
+          b64Vault.push(payload);
+          return prefix + '__MRAID_B64_VAULT_' + idx + '__';
+        });
+
+        function restoreB64Vault(str) {
+          if (!b64Vault.length) return str;
+          return str.replace(/__MRAID_B64_VAULT_(\d+)__/g, function (m, idx) {
+            var i = Number(idx);
+            return i < b64Vault.length ? b64Vault[i] : m;
+          });
+        }
+
+        // Linear-time O(N) JS tokenizer that accurately separates code, strings, template literals, comments, and regex literals
+        function tokenizeJs(code) {
+          var tokens = [];
+          var len = code.length;
+          var i = 0;
+          var codeStart = 0;
+          var prevSigChar = '';
+          var prevWord = '';
+
+          function flushCode(endIdx) {
+            if (endIdx > codeStart) {
+              tokens.push({ type: 'code', text: code.slice(codeStart, endIdx) });
+            }
+          }
+
+          function canStartRegex() {
+            if (!prevSigChar) return true;
+            if ('(,:;=!&|?+-*%^~<>/{['.indexOf(prevSigChar) !== -1) return true;
+            if (prevWord && /^(?:return|case|throw|else|do|typeof|void|delete|in|of|yield|await)$/.test(prevWord)) return true;
+            return false;
+          }
+
+          while (i < len) {
+            var ch = code[i];
+            var next = code[i + 1];
+
+            // 1. Single-line comment //
+            if (ch === '/' && next === '/') {
+              flushCode(i);
+              var cStart = i;
+              i += 2;
+              while (i < len && code[i] !== '\n' && code[i] !== '\r') i++;
+              tokens.push({ type: 'comment', text: code.slice(cStart, i) });
+              codeStart = i;
+              continue;
+            }
+
+            // 2. Multi-line comment /* ... */
+            if (ch === '/' && next === '*') {
+              flushCode(i);
+              var mStart = i;
+              i += 2;
+              while (i < len && !(code[i] === '*' && code[i + 1] === '/')) i++;
+              if (i < len) i += 2;
+              tokens.push({ type: 'comment', text: code.slice(mStart, i) });
+              codeStart = i;
+              continue;
+            }
+
+            // 3. Single or double quoted string
+            if (ch === '"' || ch === "'") {
+              flushCode(i);
+              var q = ch;
+              var sStart = i;
+              i++;
+              while (i < len) {
+                var sc = code[i++];
+                if (sc === '\\') { if (i < len) i++; }
+                else if (sc === q || sc === '\n' || sc === '\r') break;
+              }
+              tokens.push({ type: 'string', text: code.slice(sStart, i) });
+              prevSigChar = q;
+              prevWord = '';
+              codeStart = i;
+              continue;
+            }
+
+            // 4. Template literal `...` (preserving ${...} as code tokens)
+            if (ch === '`') {
+              flushCode(i);
+              var tStart = i;
+              i++;
+              while (i < len) {
+                var tc = code[i];
+                if (tc === '\\') {
+                  i += 2;
+                } else if (tc === '`') {
+                  i++;
+                  tokens.push({ type: 'string', text: code.slice(tStart, i) });
+                  break;
+                } else if (tc === '$' && code[i + 1] === '{') {
+                  i += 2;
+                  tokens.push({ type: 'string', text: code.slice(tStart, i) });
+                  // Scan balanced ${ ... }
+                  var exprStart = i;
+                  var depth = 1;
+                  while (i < len && depth > 0) {
+                    var ec = code[i];
+                    if (ec === '\\') { i += 2; continue; }
+                    if (ec === '"' || ec === "'" || ec === '`') {
+                      var eq = ec; i++;
+                      while (i < len) {
+                        var esc2 = code[i++];
+                        if (esc2 === '\\') { if (i < len) i++; }
+                        else if (esc2 === eq) break;
+                      }
+                      continue;
+                    }
+                    if (ec === '/' && code[i + 1] === '/') {
+                      i += 2;
+                      while (i < len && code[i] !== '\n' && code[i] !== '\r') i++;
+                      continue;
+                    }
+                    if (ec === '/' && code[i + 1] === '*') {
+                      i += 2;
+                      while (i < len && !(code[i] === '*' && code[i + 1] === '/')) i++;
+                      if (i < len) i += 2;
+                      continue;
+                    }
+                    if (ec === '{') depth++;
+                    else if (ec === '}') {
+                      depth--;
+                      if (depth === 0) break;
+                    }
+                    i++;
+                  }
+                  var innerExpr = code.slice(exprStart, i);
+                  var innerTokens = tokenizeJs(innerExpr);
+                  for (var it = 0; it < innerTokens.length; it++) tokens.push(innerTokens[it]);
+                  tStart = i;
+                  if (i < len && code[i] === '}') i++;
+                } else {
+                  i++;
+                }
+              }
+              prevSigChar = '`';
+              prevWord = '';
+              codeStart = i;
+              continue;
+            }
+
+            // 5. Regex literal /.../flags
+            if (ch === '/' && canStartRegex()) {
+              var rStart = i;
+              var j = i + 1;
+              var inClass = false;
+              var validRegex = false;
+              while (j < len) {
+                var rc = code[j];
+                if (rc === '\n' || rc === '\r') break;
+                if (rc === '\\') { j += 2; continue; }
+                if (rc === '[') { inClass = true; j++; continue; }
+                if (rc === ']') { inClass = false; j++; continue; }
+                if (rc === '/' && !inClass) {
+                  validRegex = true;
+                  j++;
+                  while (j < len && /[a-z]/i.test(code[j])) j++;
+                  break;
+                }
+                j++;
+              }
+              if (validRegex && j > rStart + 1) {
+                flushCode(i);
+                tokens.push({ type: 'regex', text: code.slice(rStart, j) });
+                prevSigChar = '/';
+                prevWord = '';
+                i = j;
+                codeStart = i;
+                continue;
+              }
+            }
+
+            // Track previous significant character and identifier word for regex context
+            if (/[A-Za-z_$]/.test(ch)) {
+              var wStart = i;
+              i++;
+              while (i < len && /[\w$]/.test(code[i])) i++;
+              prevWord = code.slice(wStart, i);
+              prevSigChar = code[i - 1];
+              continue;
+            }
+
+            if (!/\s/.test(ch)) {
+              prevSigChar = ch;
+              prevWord = '';
+            }
+            i++;
+          }
+
+          flushCode(len);
+          return tokens;
+        }
+
+        function isExecutableScriptOpenTag(openTag) {
+          var m = openTag.match(/\btype\s*=\s*(["']?)([^"'\s>]+)\1/i);
+          if (!m) return true;
+          var t = (m[2] || '').toLowerCase();
+          return !t || t === 'text/javascript' || t === 'application/javascript' || t === 'module' || t === 'text/ecmascript' || t === 'application/ecmascript';
+        }
+
+        // Safely transform only executable <script> blocks and HTML inline on* event attributes (never touching HTML markup, JSON scripts, or CSS)
+        function transformAllJsInHtml(inputHtml, transformFn) {
+          // 1. Transform inside executable <script> tags
+          var out = inputHtml.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (full, openTag, body, closeTag) {
+            if (!isExecutableScriptOpenTag(openTag) || !body.trim()) return full;
+            return openTag + transformFn(body) + closeTag;
+          });
+
+          // 2. Transform inline on*="..." attributes on non-script/style HTML tags
+          var parts = out.split(/(<script\b[^>]*>[\s\S]*?<\/[s]cript>|<style\b[^>]*>[\s\S]*?<\/style>)/gi);
+          for (var p = 0; p < parts.length; p += 2) {
+            parts[p] = parts[p].replace(/(<[a-zA-Z][\w:-]*(?:\s+[^>]*)?>)/g, function (tagStr) {
+              if (!/\bon[a-z]+\s*=/i.test(tagStr)) return tagStr;
+              return tagStr.replace(/(\s+on[a-z]+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, prefix, quote, handlerCode) {
+                return prefix + quote + transformFn(handlerCode) + quote;
+              });
+            });
+          }
+          return parts.join('');
+        }
 
         /* CHECK 1 - Bridge Declaration */
         (function () {
-          var ABS_RE = /<script[^>]+src=["'][^"']*(?:https?:|\/\/)[^"']*mraid[^"']*\.js["'][^>]*>\s*<\/[s]cript>/gi;
+          var ABS_RE = /<script\b[^>]*\bsrc=["'][^"']*(?:https?:|\/\/)[^"']*\/mraid(?:\.min)?\.js(?:[?#][^"']*)?["'][^>]*>\s*<\/[s]cript>/gi;
           var absM = html.match(ABS_RE) || [];
           if (absM.length) {
-            html = html.replace(ABS_RE, '\x3cscript src="mraid.js">\x3c/script>');
+            html = html.replace(ABS_RE, function () { return '\x3cscript src="mraid.js">\x3c/script>'; });
             diff('Bridge: Absolute URL \u2192 relative', absM[0], '\x3cscript src="mraid.js">\x3c/script>');
           }
-          var REL_RE = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/gi;
+          var REL_RE = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/gi;
           var relM = html.match(REL_RE) || [];
           if (relM.length > 1) {
-            var cnt = 0; html = html.replace(REL_RE, function (m) { cnt++; return cnt === 1 ? m : ''; });
+            var cnt = 0;
+            html = html.replace(REL_RE, function (m) { cnt++; return cnt === 1 ? m : ''; });
             diff('Bridge: Removed duplicate mraid.js tags', relM.length + ' instances', 'Kept exactly 1');
           }
-          var BODY_RE = /(<body[^>]*>[\s\S]*?)(<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>)([\s\S]*?<\/body>)/i;
-          if (BODY_RE.test(html)) {
-            html = html.replace(BODY_RE, function (_, pre, tag, post) { return pre + post; });
-            html = html.replace(/(<head[^>]*>)/i, '$1\n  \x3cscript src="mraid.js">\x3c/script>');
+          var headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i);
+          var inHead = headMatch ? REL_RE.test(headMatch[1]) : false;
+          REL_RE.lastIndex = 0;
+
+          if (!inHead && REL_RE.test(html)) {
+            html = html.replace(REL_RE, '');
+            if (/<head\b[^>]*>/i.test(html)) {
+              html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n  \x3cscript src="mraid.js">\x3c/script>'; });
+            } else {
+              html = '\x3chead>\n  \x3cscript src="mraid.js">\x3c/script>\n\x3c/head>\n' + html;
+            }
             diff('Bridge: Moved mraid.js from body to head', 'In body', 'In head');
+            inHead = true;
           }
-          var ANY_RE = /<script[^>]+src=["'][^"']*mraid[^"']*\.js["'][^>]*>/i;
+
+          var ANY_RE = /<script\b[^>]*\bsrc=["'](?:[^"']*\/)?mraid(?:\.min)?\.js(?:[?#][^"']*)?["'][^>]*>/i;
           if (!ANY_RE.test(html)) {
-            if (/<head[^>]*>/i.test(html)) { html = html.replace(/(<head[^>]*>)/i, '$1\n  \x3cscript src="mraid.js">\x3c/script>'); }
-            else { html = '\x3chead>\n  \x3cscript src="mraid.js">\x3c/script>\n\x3c/head>\n' + html; }
+            if (/<head\b[^>]*>/i.test(html)) {
+              html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n  \x3cscript src="mraid.js">\x3c/script>'; });
+            } else {
+              html = '\x3chead>\n  \x3cscript src="mraid.js">\x3c/script>\n\x3c/head>\n' + html;
+            }
             diff('Bridge: Injected missing mraid.js', '(not found)', '\x3cscript src="mraid.js">\x3c/script> added to head');
             results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'mraid.js was missing and has been injected into head.', status: 'fixed' });
             return;
           }
-          var hc = (html.match(/<head[^>]*>([\s\S]*?)<\/head>/i) || [])[1] || '';
-          var inH = /<script[^>]+src=["']mraid\.js["'][^>]*>/i.test(hc);
           if (absM.length) { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'Fixed: absolute URL replaced with relative src="mraid.js".', status: 'fixed' }); }
-          else if (inH) { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'script src="mraid.js" correctly declared once in head.', status: 'pass' }); }
+          else if (inHead) { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'script src="mraid.js" correctly declared once in head.', status: 'pass' }); }
           else { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'mraid.js was outside head \u2014 moved it inside.', status: 'fixed' }); }
         }());
 
@@ -1594,9 +1834,9 @@
             '\x3c/script>'
           ].join('\n');
           if (!hasUsable && !hasInit) {
-            var INJ_RE = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
+            var INJ_RE = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
             if (INJ_RE.test(html)) { html = html.replace(INJ_RE, function (m) { return m + '\n' + GUARD; }); }
-            else { html = html.replace(/(<\/head>)/i, GUARD + '\n$1'); }
+            else { html = html.replace(/<\/head>/i, function (m) { return GUARD + '\n' + m; }); }
             diff('Readiness Guards: Injected isMraidUsable + initializeWhenMraidReady', '(missing)', 'Full MRAID readiness block added');
             results.push({ id: 'readiness', title: 'Readiness Guards', desc: 'Injected isMraidUsable() and initializeWhenMraidReady() lifecycle helpers.', status: 'fixed' });
           } else if (!hasUsable) {
@@ -1643,11 +1883,11 @@
             '\x3c/script>'
           ].join('\n');
 
-          var INJ_POINT = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
+          var INJ_POINT = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
           if (INJ_POINT.test(html)) {
             html = html.replace(INJ_POINT, function (m) { return m + '\n' + STATE_GUARD; });
-          } else if (/<head[^>]*>/i.test(html)) {
-            html = html.replace(/(<head[^>]*>)/i, '$1\n' + STATE_GUARD);
+          } else if (/<head\b[^>]*>/i.test(html)) {
+            html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n' + STATE_GUARD; });
           } else {
             html = STATE_GUARD + '\n' + html;
           }
@@ -1671,23 +1911,88 @@
           }
         }());
 
-        /* CHECK 4 - window.open() Replacement */
+        /* CHECK 4 - window.open() Replacement (Balanced parenthesis-aware, code-only) */
         (function () {
-          var WO_RE = /\bwindow(?:\.open|\[["']open["']\])\s*\(([^)]*)\)/gi;
-          var woMatches = html.match(WO_RE) || [];
-          if (woMatches.length) {
-            var count = 0;
-            html = html.replace(WO_RE, function (match, args) {
-              count++;
-              args = (args || '').trim();
-              if (!args) return 'handleMraidOpen()';
-              var firstArgMatch = args.match(/^\s*(?:(["'`])(?:\\.|(?!\1)[^\\])*\1|[^,]+)/);
-              var firstArg = firstArgMatch ? firstArgMatch[0].trim() : args.split(',')[0].trim();
-              if (firstArg === '""' || firstArg === "''" || firstArg === '"about:blank"' || firstArg === "'about:blank'") {
-                return 'handleMraidOpen()';
+          var count = 0;
+
+          function replaceWindowOpenInJs(jsCode) {
+            if (!/\bwindow\s*(?:\.\s*open|\[\s*["']open["']\s*\])/.test(jsCode)) return jsCode;
+            var tokens = tokenizeJs(jsCode);
+            var rebuilt = '';
+            for (var t = 0; t < tokens.length; t++) {
+              rebuilt += tokens[t].text;
+            }
+            // Scan code using token boundaries so strings/comments/regexes are never matched
+            var out = '';
+            var idx = 0;
+            var len = jsCode.length;
+            var tokenRanges = [];
+            var pos = 0;
+            for (var k = 0; k < tokens.length; k++) {
+              var tk = tokens[k];
+              tokenRanges.push({ type: tk.type, start: pos, end: pos + tk.text.length });
+              pos += tk.text.length;
+            }
+            function isCodeOffset(offset) {
+              for (var r = 0; r < tokenRanges.length; r++) {
+                if (offset >= tokenRanges[r].start && offset < tokenRanges[r].end) {
+                  return tokenRanges[r].type === 'code';
+                }
               }
-              return 'handleMraidOpen(' + firstArg + ')';
-            });
+              return false;
+            }
+
+            var woStartRe = /\bwindow\s*(?:\.\s*open|\[\s*["']open["']\s*\])\s*\(/g;
+            var match;
+            while ((match = woStartRe.exec(jsCode)) !== null) {
+              if (!isCodeOffset(match.index)) continue;
+              var openParenIdx = match.index + match[0].length - 1;
+              // Scan balanced parentheses (...) respecting token ranges
+              var p = openParenIdx + 1;
+              var depth = 1;
+              var firstCommaIdx = -1;
+              while (p < len && depth > 0) {
+                // If p is inside a non-code token, jump to the end of that token!
+                var jumped = false;
+                for (var r = 0; r < tokenRanges.length; r++) {
+                  if (p >= tokenRanges[r].start && p < tokenRanges[r].end && tokenRanges[r].type !== 'code') {
+                    p = tokenRanges[r].end;
+                    jumped = true;
+                    break;
+                  }
+                }
+                if (jumped) continue;
+                var ch = jsCode[p];
+                if (ch === '(' || ch === '[' || ch === '{') depth++;
+                else if (ch === ')' || ch === ']' || ch === '}') {
+                  depth--;
+                  if (depth === 0) break;
+                } else if (ch === ',' && depth === 1 && firstCommaIdx === -1) {
+                  firstCommaIdx = p;
+                }
+                p++;
+              }
+              if (depth === 0) {
+                count++;
+                out += jsCode.slice(idx, match.index);
+                var rawArgs = jsCode.slice(openParenIdx + 1, p).trim();
+                var firstArg = (firstCommaIdx !== -1 ? jsCode.slice(openParenIdx + 1, firstCommaIdx) : rawArgs).trim();
+                if (!firstArg || firstArg === '""' || firstArg === "''" || firstArg === '``' || firstArg === '"about:blank"' || firstArg === "'about:blank'") {
+                  out += 'handleMraidOpen()';
+                } else {
+                  out += 'handleMraidOpen(' + firstArg + ')';
+                }
+                idx = p + 1;
+                woStartRe.lastIndex = idx;
+              }
+            }
+            out += jsCode.slice(idx);
+            return out;
+          }
+
+          html = transformAllJsInHtml(html, replaceWindowOpenInJs);
+
+          if (count > 0) {
             diff('Click-Through: window.open() \u2192 handleMraidOpen()', count + ' occurrence(s)', 'Replaced with compliant handleMraidOpen()');
             results.push({
               id: 'wo_replace',
@@ -1715,23 +2020,32 @@
             if (!callable.test(html)) return;
             var replacement = 'creativeTapHandler' + index;
             while (html.indexOf(replacement) !== -1) replacement += '_';
+            var idRe = new RegExp('\\b' + name + '\\b', 'g');
             function renameCode(code) {
-              return code.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\/\/[^\n]*|\/\*[\s\S]*?\*\/)|\b[A-Za-z_$][\w$]*\b/g, function (token, literal) {
-                return !literal && token === name ? replacement : token;
-              });
+              var tokens = tokenizeJs(code);
+              for (var i = 0; i < tokens.length; i++) {
+                if (tokens[i].type === 'code') {
+                  tokens[i].text = tokens[i].text.replace(idRe, replacement);
+                }
+              }
+              return tokens.map(function (t) { return t.text; }).join('');
             }
-            html = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (_, start, code, end) {
-              return start + renameCode(code) + end;
-            });
-            html = html.replace(/(\bon\w+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, attr, quote, code) {
-              return attr + quote + renameCode(code) + quote;
-            });
-            renamed.push(name + ' ? ' + replacement);
+            html = transformAllJsInHtml(html, renameCode);
+            renamed.push(name + ' \u2192 ' + replacement);
           });
           if (renamed.length) diff('Renamed callbacks reserved for click URLs', renamed.join(', '), 'Distinct creative callback names');
-          html = html.replace(/\bvar\s+mraid\s*=\s*window\.mraid\s*;/g, '');
-          // Route existing calls through the same guard, including empty-string calls.
-          html = html.replace(/\b(?:window\.)?mraid\.open\s*\(/g, 'window.openMraidDestination(');
+
+          // Route existing mraid.open calls in JS code through window.openMraidDestination (preserving local var mraid declarations so if(mraid) never throws ReferenceError)
+          html = transformAllJsInHtml(html, function (code) {
+            var tokens = tokenizeJs(code);
+            for (var i = 0; i < tokens.length; i++) {
+              if (tokens[i].type === 'code') {
+                tokens[i].text = tokens[i].text.replace(/(^|[^.\w$])(?:window\s*\.\s*)?mraid\s*\.\s*open\s*\(/g, '$1window.openMraidDestination(');
+              }
+            }
+            return tokens.map(function (t) { return t.text; }).join('');
+          });
+
           var CLICK_ENGINE = [
             '\x3cscript>',
             '/* MRAID v2.0 Compliant Click-Through Engine - injected by MRAID Fixer */',
@@ -1755,11 +2069,11 @@
             '})();',
             '\x3c/script>'
           ].join('\n');
-          var INJ_POINT = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
+          var INJ_POINT = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
           if (INJ_POINT.test(html)) {
             html = html.replace(INJ_POINT, function (m) { return m + '\n' + CLICK_ENGINE; });
-          } else if (/<head[^>]*>/i.test(html)) {
-            html = html.replace(/(<head[^>]*>)/i, '$1\n' + CLICK_ENGINE);
+          } else if (/<head\b[^>]*>/i.test(html)) {
+            html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n' + CLICK_ENGINE; });
           } else {
             html = CLICK_ENGINE + '\n' + html;
           }
@@ -1771,77 +2085,63 @@
         (function () {
           var detected = [];
           var RESERVED_PATTERN = /\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/g;
-          var rawMatches = html.match(RESERVED_PATTERN);
-          if (rawMatches) {
-            rawMatches.forEach(function (m) {
-              if (detected.indexOf(m) === -1) detected.push(m);
-            });
-          }
-
           var fixCount = 0;
 
-          // 1. Clean up fallback chains containing clickTag and reserved identifiers
           var reTrailingFallback = /\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi;
-          if (reTrailingFallback.test(html)) {
-            html = html.replace(reTrailingFallback, function () {
-              fixCount++;
-              return '';
-            });
-          }
-
           var reLeadingFallback = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b\s*\|\|\s*(?=(?:window\.)?clickTag\b)/gi;
-          if (reLeadingFallback.test(html)) {
-            html = html.replace(reLeadingFallback, function () {
-              fixCount++;
-              return '';
-            });
-          }
-
           var reOrphanChain = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b(?:\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b)+/gi;
-          if (reOrphanChain.test(html)) {
-            html = html.replace(reOrphanChain, function () {
-              fixCount++;
-              return 'window.clickTag';
-            });
-          }
-
-          // 2. Bracket notation window["clickTag1"] / window['clickthrough']
           var reBracket = /\bwindow\s*\[\s*(["'])(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\1\s*\]/gi;
-          if (reBracket.test(html)) {
-            html = html.replace(reBracket, function () {
-              fixCount++;
-              return 'window.clickTag';
-            });
-          }
 
-          // 3. Rename any remaining identifier occurrences in <script> and inline event handlers
-          function renameReservedTokens(code) {
-            return code.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\/\/[^\n]*|\/\*[\s\S]*?\*\/)|\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi, function (token, literal, ident) {
-              if (literal) {
-                if (literal.indexOf('//') === 0 || literal.indexOf('/*') === 0) {
-                  return literal
-                    .replace(/\bclickTag(\d+)\b/gi, function (_, n) { fixCount++; return 'creativeExitUrl' + n; })
-                    .replace(/\b(?:clickthrough|clickThrough|click_through)\b/gi, function () { fixCount++; return 'click target'; });
+          function cleanReservedInJs(code) {
+            var rawMatches = code.match(RESERVED_PATTERN);
+            if (rawMatches) {
+              rawMatches.forEach(function (m) {
+                if (detected.indexOf(m) === -1) detected.push(m);
+              });
+            }
+
+            // First handle window["clickTag1"] before tokenizing
+            if (reBracket.test(code)) {
+              code = code.replace(reBracket, function () {
+                fixCount++;
+                return 'window.clickTag';
+              });
+            }
+
+            var tokens = tokenizeJs(code);
+            for (var i = 0; i < tokens.length; i++) {
+              var tk = tokens[i];
+              if (tk.type === 'code') {
+                var txt = tk.text;
+                if (reTrailingFallback.test(txt)) {
+                  txt = txt.replace(reTrailingFallback, function () { fixCount++; return ''; });
                 }
-                return token;
+                if (reLeadingFallback.test(txt)) {
+                  txt = txt.replace(reLeadingFallback, function () { fixCount++; return ''; });
+                }
+                if (reOrphanChain.test(txt)) {
+                  txt = txt.replace(reOrphanChain, function () { fixCount++; return 'window.clickTag'; });
+                }
+                txt = txt.replace(/\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi, function (ident) {
+                  fixCount++;
+                  var lower = ident.toLowerCase();
+                  if (/^clicktag\d+$/i.test(lower)) {
+                    var num = lower.replace(/^clicktag/, '');
+                    return 'creativeExitUrl' + num;
+                  }
+                  return 'creativeExitUrl';
+                });
+                tk.text = txt;
+              } else if (tk.type === 'comment') {
+                tk.text = tk.text
+                  .replace(/\bclickTag(\d+)\b/gi, function (_, n) { fixCount++; return 'creativeExitUrl' + n; })
+                  .replace(/\b(?:clickthrough|clickThrough|click_through)\b/gi, function () { fixCount++; return 'click target'; });
               }
-              if (!ident) return token;
-              fixCount++;
-              var lower = ident.toLowerCase();
-              if (/^clicktag\d+$/i.test(lower)) {
-                var num = lower.replace(/^clicktag/, '');
-                return 'creativeExitUrl' + num;
-              }
-              return 'creativeExitUrl';
-            });
+            }
+            return tokens.map(function (t) { return t.text; }).join('');
           }
 
-          html = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (_, start, code, end) {
-            return start + renameReservedTokens(code) + end;
-          });
-          html = html.replace(/(\bon\w+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, attr, quote, code) {
-            return attr + quote + renameReservedTokens(code) + quote;
-          });
+          html = transformAllJsInHtml(html, cleanReservedInJs);
 
           if (detected.length || fixCount > 0) {
             var descList = detected.length ? detected.join(', ') : 'clickTag1, clickthrough, clickThrough';
@@ -1864,8 +2164,10 @@
 
         /* CHECK 7 - Media Viewability */
         (function () {
-          var hasVideo = /<video/i.test(html), hasAudio = /<audio|new\s+Audio/i.test(html),
-            hasIV = /(?:window\.)?(?:mraid|m)\.isViewable\s*\(\s*\)/i.test(html), hasVC = /viewableChange/i.test(html),
+          var hasVideo = /<video\b|createElement\s*\(\s*["']video["']\s*\)/i.test(html),
+            hasAudio = /<audio\b|new\s+Audio\b/i.test(html),
+            hasIV = /(?:window\.)?(?:mraid|m)\.isViewable\s*\(\s*\)/i.test(html),
+            hasVC = /viewableChange/i.test(html),
             hasMedia = hasVideo || hasAudio;
           var hasInjectedVB = /MRAID Viewability Lifecycle/i.test(html);
 
@@ -1886,21 +2188,27 @@
             '  var p=[];',
             '  function sync(v){',
             '    var all=Array.prototype.slice.call(document.querySelectorAll("video,audio"));',
-            '    if(!v){all.forEach(function(el){if(!el.paused){p.push(el);el.pause();}});}',
-            '    else{p.forEach(function(el){el.play().catch(function(){});});p=[];}',
+            '    if(v===false){all.forEach(function(el){if(!el.paused){if(p.indexOf(el)===-1)p.push(el);el.pause();}});}',
+            '    else if(v===true){p.forEach(function(el){el.play().catch(function(){});});p=[];}',
+            '  }',
+            '  function bind(){',
+            '    var m=window.mraid;if(!m)return;',
+            '    if(typeof mraid.isViewable==="function"){try{var iv=mraid.isViewable();if(iv===false)sync(false);}catch(e){}}',
+            '    if(typeof mraid.addEventListener==="function"){try{mraid.addEventListener("viewableChange",sync);}catch(e){}}',
             '  }',
             '  function setup(){',
             '    var m=window.mraid;if(!m)return;',
-            '    if(typeof mraid.isViewable==="function"){try{sync(mraid.isViewable());}catch(e){}}',
-            '    if(typeof mraid.addEventListener==="function"){try{mraid.addEventListener("viewableChange",sync);}catch(e){}}',
+            '    if(typeof mraid.getState==="function"&&mraid.getState()==="loading"&&typeof mraid.addEventListener==="function"){',
+            '      mraid.addEventListener("ready",bind);',
+            '    }else{bind();}',
             '  }',
             '  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",setup);}else{setup();}',
             '})();',
             '\x3c/script>'
           ].join('\n');
 
-          if (/(<\/body>)/i.test(html)) {
-            html = html.replace(/(<\/body>)/i, VB + '\n$1');
+          if (/<\/body>/i.test(html)) {
+            html = html.replace(/<\/body>/i, function (m) { return VB + '\n' + m; });
           } else {
             html = html + '\n' + VB;
           }
@@ -1933,30 +2241,132 @@
           else { results.push({ id: 'tap', title: 'iOS Tap Deduplication', desc: 'No custom touch handling found. Not applicable.', status: 'pass' }); }
         }());
 
-        /* CHECK 9 - External Navigation & Redirect Elimination */
+        /* CHECK 9 - External Navigation & Redirect Elimination (Token-aware, never strips // inside URLs or swallows surrounding components) */
         (function () {
           var fixCount = 0;
-          var LOC_ASSIGN_RE = /\b(?:window\.|top\.|parent\.)?location\.(?:assign|replace)\s*\(\s*([^)]*)\s*\)/gi;
-          if (LOC_ASSIGN_RE.test(html)) {
-            html = html.replace(LOC_ASSIGN_RE, function (m, arg) {
-              fixCount++;
-              arg = (arg || '').trim();
-              return arg ? 'handleMraidOpen(' + arg + ')' : 'handleMraidOpen()';
-            });
-          }
-          var LOC_HREF_RE = /(?:(?:\b(?:window|top|parent)\.location(?:\.href)?)|(?:\blocation\.href))\s*=(?![=>])\s*([^;\n\r\}]+)/gi;
-          if (LOC_HREF_RE.test(html)) {
-            html = html.replace(LOC_HREF_RE, function (m, arg) {
-              var rhs = (arg || '').trim();
-              if (!rhs || rhs.startsWith('"#') || rhs.startsWith("'#") || rhs.startsWith('`#') || rhs.indexOf('location.hash') !== -1) {
-                return m;
+
+          function replaceLocationNavigationInJs(jsCode) {
+            if (!/\blocation\b/.test(jsCode)) return jsCode;
+
+            var tokens = tokenizeJs(jsCode);
+            var tokenRanges = [];
+            var pos = 0;
+            for (var k = 0; k < tokens.length; k++) {
+              tokenRanges.push({ type: tokens[k].type, start: pos, end: pos + tokens[k].text.length });
+              pos += tokens[k].text.length;
+            }
+            function getTokenAt(offset) {
+              for (var r = 0; r < tokenRanges.length; r++) {
+                if (offset >= tokenRanges[r].start && offset < tokenRanges[r].end) return tokenRanges[r];
               }
-              // Strip any trailing inline comments
-              rhs = rhs.replace(/\/\*.*?\*\/|\/\/.*$/g, '').trim();
+              return null;
+            }
+
+            // 1. Replace location.assign(...) and location.replace(...) with balanced parens
+            var assignRe = /\b(?:(?:window|top|parent)\s*\.\s*)?location\s*\.\s*(?:assign|replace)\s*\(/g;
+            var out = '';
+            var idx = 0;
+            var len = jsCode.length;
+            var m;
+            while ((m = assignRe.exec(jsCode)) !== null) {
+              var tk = getTokenAt(m.index);
+              if (!tk || tk.type !== 'code') continue;
+              var openParen = m.index + m[0].length - 1;
+              var p = openParen + 1;
+              var depth = 1;
+              while (p < len && depth > 0) {
+                var curTk = getTokenAt(p);
+                if (curTk && curTk.type !== 'code') { p = curTk.end; continue; }
+                var ch = jsCode[p];
+                if (ch === '(' || ch === '[' || ch === '{') depth++;
+                else if (ch === ')' || ch === ']' || ch === '}') {
+                  depth--;
+                  if (depth === 0) break;
+                }
+                p++;
+              }
+              if (depth === 0) {
+                fixCount++;
+                out += jsCode.slice(idx, m.index);
+                var arg = jsCode.slice(openParen + 1, p).trim();
+                out += arg ? 'handleMraidOpen(' + arg + ')' : 'handleMraidOpen()';
+                idx = p + 1;
+                assignRe.lastIndex = idx;
+              }
+            }
+            out += jsCode.slice(idx);
+
+            // 2. Replace location.href = <expr> or window.location = <expr> safely
+            jsCode = out;
+            tokens = tokenizeJs(jsCode);
+            tokenRanges = [];
+            pos = 0;
+            for (var k2 = 0; k2 < tokens.length; k2++) {
+              tokenRanges.push({ type: tokens[k2].type, start: pos, end: pos + tokens[k2].text.length });
+              pos += tokens[k2].text.length;
+            }
+
+            var hrefRe = /(?:(?:\b(?:window|top|parent)\s*\.\s*location(?:\s*\.\s*href)?)|(?:\blocation\s*\.\s*href))\s*=(?![=>])/g;
+            out = '';
+            idx = 0;
+            len = jsCode.length;
+            while ((m = hrefRe.exec(jsCode)) !== null) {
+              var tk2 = getTokenAt(m.index);
+              if (!tk2 || tk2.type !== 'code') continue;
+              // Ensure not preceded by '.' (e.g. myObj.location.href)
+              if (m.index > 0 && jsCode[m.index - 1] === '.') continue;
+
+              var rhsStart = m.index + m[0].length;
+              var p2 = rhsStart;
+              var depth2 = 0;
+              var ternaryDepth = 0;
+              var exprParts = [];
+              var lastCopy = rhsStart;
+
+              while (p2 < len) {
+                var curTk2 = getTokenAt(p2);
+                if (curTk2 && curTk2.type !== 'code') {
+                  if (curTk2.type === 'comment') {
+                    // Omit comment from inside handleMraidOpen(...) argument
+                    if (p2 > lastCopy) exprParts.push(jsCode.slice(lastCopy, p2));
+                    p2 = curTk2.end;
+                    lastCopy = p2;
+                    continue;
+                  }
+                  p2 = curTk2.end;
+                  continue;
+                }
+                var ch2 = jsCode[p2];
+                if (ch2 === '(' || ch2 === '[' || ch2 === '{') {
+                  depth2++;
+                } else if (ch2 === ')' || ch2 === ']' || ch2 === '}') {
+                  if (depth2 === 0) break;
+                  depth2--;
+                } else if (depth2 === 0) {
+                  if (ch2 === ';' || ch2 === '\n' || ch2 === '\r' || ch2 === ',') break;
+                  if (ch2 === '?') ternaryDepth++;
+                  else if (ch2 === ':') {
+                    if (ternaryDepth > 0) ternaryDepth--;
+                    else break;
+                  }
+                }
+                p2++;
+              }
+              if (p2 > lastCopy) exprParts.push(jsCode.slice(lastCopy, p2));
+              var rhs = exprParts.join('').trim();
+              if (!rhs || rhs.indexOf('"#') === 0 || rhs.indexOf("'#") === 0 || rhs.indexOf('`#') === 0 || rhs.indexOf('location.hash') !== -1) {
+                continue;
+              }
               fixCount++;
-              return 'handleMraidOpen(' + rhs + ')';
-            });
+              out += jsCode.slice(idx, m.index) + 'handleMraidOpen(' + rhs + ')';
+              idx = p2;
+              hrefRe.lastIndex = idx;
+            }
+            out += jsCode.slice(idx);
+            return out;
           }
+
+          html = transformAllJsInHtml(html, replaceLocationNavigationInJs);
 
           if (fixCount > 0) {
             diff('Navigation: location redirect \u2192 handleMraidOpen()', fixCount + ' occurrence(s)', 'Replaced external navigation with handleMraidOpen()');
@@ -1975,6 +2385,9 @@
             });
           }
         }());
+
+        // Restore all embedded Base64 / Base122 payloads intact before final checks and output
+        html = restoreB64Vault(html);
 
         /* CHECK 10 - External Network Calls & Remote Endpoints */
         (function () {

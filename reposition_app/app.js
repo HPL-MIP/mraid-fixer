@@ -1973,7 +1973,7 @@
         });
 
         const newJson = JSON.stringify(config);
-        html = html.replace(configRegex, `$1${newJson}$3`);
+        html = html.replace(configRegex, (_, openTag, _oldJson, closeTag) => `${openTag}${newJson}${closeTag}`);
       } catch (err) {
         console.error('Error updating SIP config JSON:', err);
       }
@@ -2010,7 +2010,7 @@
         if (el.fontWeight) styleStr = updateStyleProperty(styleStr, 'font-weight', el.fontWeight);
         if (el.textAlign) styleStr = updateStyleProperty(styleStr, 'text-align', el.textAlign);
 
-        html = html.replace(targetPattern, `$1${styleStr}$3`);
+        html = html.replace(targetPattern, (_, prefix, _oldStyle, quote) => `${prefix}${styleStr}${quote}`);
       } else {
         const noStylePattern = new RegExp(
           `(<[a-zA-Z0-9]+[^>]*?(?:id=["']${el.key}["']|data-block-id=["']${el.key}["']|data-reposition-key=["']${el.key}["']))([^>]*>)`,
@@ -2019,7 +2019,7 @@
         const matchNoStyle = html.match(noStylePattern);
         if (matchNoStyle && !matchNoStyle[1].includes('style=')) {
           const newStyle = `style="position:absolute;left:${formatPercent(el.x)}%;top:${formatPercent(el.y)}%;"`;
-          html = html.replace(noStylePattern, `$1 ${newStyle}$2`);
+          html = html.replace(noStylePattern, (_, prefix, rest) => `${prefix} ${newStyle}${rest}`);
         }
       }
     });
@@ -2046,7 +2046,7 @@
 
       const updatedJsonStr = JSON.stringify(state.layoutBlocksData);
       const jsonRegex = /(<script type=["']application\/json["']\s+id=["']__layout_blocks["'][^>]*>)([\s\S]*?)(<\/script>)/i;
-      html = html.replace(jsonRegex, `$1${updatedJsonStr}$3`);
+      html = html.replace(jsonRegex, (_, openTag, _oldJson, closeTag) => `${openTag}${updatedJsonStr}${closeTag}`);
     }
 
     // Clean up editor bridge
@@ -2082,9 +2082,9 @@
 
       const overrideTag = `<style id="__reposition_mip_overrides">${customCss}    </style>\n`;
       if (html.includes('id="__reposition_mip_overrides"')) {
-        html = html.replace(/<style id="__reposition_mip_overrides">[\s\S]*?<\/style>/i, overrideTag);
+        html = html.replace(/<style id="__reposition_mip_overrides">[\s\S]*?<\/style>/i, () => overrideTag);
       } else if (/<\/head>/i.test(html)) {
-        html = html.replace(/<\/head>/i, `${overrideTag}</head>`);
+        html = html.replace(/<\/head>/i, () => `${overrideTag}</head>`);
       } else {
         html = overrideTag + html;
       }
@@ -2112,7 +2112,7 @@
   function updateStyleProperty(styleStr, prop, val) {
     const regex = new RegExp(`(${prop}\\s*:\\s*)([^;]+)(;?)`, 'i');
     if (regex.test(styleStr)) {
-      return styleStr.replace(regex, `$1${val}$3`);
+      return styleStr.replace(regex, (_, p1, _p2, p3) => `${p1}${val}${p3}`);
     } else {
       const clean = styleStr.trim().replace(/;$/, '');
       return clean ? `${clean};${prop}:${val};` : `${prop}:${val};`;

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Convert images, video, audio and HTML files to Base64 data URLs in your browser." />
+    <title>Base64 Studio — Media Converter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="suite-nav" aria-label="Other tools">
+        <a href="../index.html">🛡️ MRAID Fixer</a>
+        <a href="../compressor/index.html">🗜️ Creative Compressor</a>
+        <a href="../date_manipulator/index.html">📅 Date Manipulator</a>
+        <a href="../reposition_app/index.html">🎯 Reposition Studio</a>
+        <a href="../mip_reposition_app/index.html">↗️ MIP Studio</a>
+        <a href="../images_to_webp/index.html">🖼️ WebP Converter</a>
+        <a class="active" href="index.html">🔤 Base64 Studio</a>
+      </nav>
+      <header class="hero">
+        <p class="eyebrow">LOCAL • PRIVATE • BATCH READY</p>
+        <h1>Base64 Studio</h1>
+        <p class="intro">Drop your media in. Get clean Base64 data URLs out. Nothing leaves your browser.</p>
+      </header>
+
+      <section class="uploader" id="dropZone" aria-label="File uploader">
+        <input id="fileInput" type="file" multiple accept="image/*,video/*,audio/*,.html,.htm,text/html" />
+        <div class="upload-mark">+</div>
+        <h2>Drop files here</h2>
+        <p>Images, video, audio, HTML, and other files</p>
+        <button class="button primary" id="browseButton" type="button">Choose files</button>
+      </section>
+
+      <section class="toolbar" aria-label="Conversion actions">
+        <div><strong id="fileCount">0 files</strong><span id="totalSize"> ready to convert</span></div>
+        <div class="toolbar-actions">
+          <button class="button quiet" id="clearButton" type="button" disabled>Clear all</button>
+          <button class="button primary" id="exportButton" type="button" disabled>Export all .zip</button>
+        </div>
+      </section>
+
+      <section id="emptyState" class="empty-state">
+        <span>⌁</span>
+        <p>Your converted files will appear here.</p>
+      </section>
+      <section id="fileList" class="file-list" aria-live="polite"></section>
+    </main>
+
+    <template id="fileTemplate">
+      <article class="file-card">
+        <div class="file-topline">
+          <div class="file-identity"><span class="type-badge"></span><div><h3 class="file-name"></h3><p class="file-meta"></p></div></div>
+          <button class="icon-button remove-button" type="button" title="Remove file" aria-label="Remove file">×</button>
+        </div>
+        <div class="preview"></div>
+        <label class="output-label">BASE64 DATA URL</label>
+        <textarea class="base64-output" readonly spellcheck="false" aria-label="Base64 output"></textarea>
+        <div class="card-actions">
+          <button class="button quiet copy-button" type="button">Copy</button>
+          <button class="button quiet download-button" type="button">Download .txt</button>
+        </div>
+      </article>
+    </template>
+    <script src="app.js"></script>
+  </body>
+</html>

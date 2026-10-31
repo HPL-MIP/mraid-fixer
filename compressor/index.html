@@ -1343,6 +1343,137 @@
       .settings-grid { grid-template-columns: 1fr; }
       .fc-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
     }
+
+    /* FFmpeg Binary Engine Status Bar & Installer */
+    .ffmpeg-engine-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 13px 18px;
+      border-radius: var(--r-md);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-light);
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .ffmpeg-engine-bar.active-bin {
+      background: linear-gradient(135deg, rgba(39, 103, 73, 0.16), rgba(79, 209, 197, 0.06));
+      border-color: rgba(104, 211, 145, 0.35);
+    }
+
+    .ffmpeg-status-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .ffmpeg-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-amber);
+      box-shadow: 0 0 8px var(--accent-amber);
+      flex-shrink: 0;
+    }
+
+    .ffmpeg-dot.online {
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .ffmpeg-status-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ffmpeg-status-sub {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .ffmpeg-controls-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .engine-mode-switch {
+      display: inline-flex;
+      background: rgba(9, 11, 16, 0.65);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .engine-mode-btn {
+      padding: 5px 11px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--ease);
+      font-family: inherit;
+    }
+
+    .engine-mode-btn.active {
+      background: rgba(104, 211, 145, 0.2);
+      color: var(--accent-green);
+      border: 1px solid rgba(104, 211, 145, 0.35);
+    }
+
+    .btn-ffmpeg-action {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(99, 179, 237, 0.35);
+      background: rgba(99, 179, 237, 0.14);
+      color: var(--accent-blue);
+      cursor: pointer;
+      transition: var(--ease);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-ffmpeg-action:hover:not(:disabled) {
+      background: rgba(99, 179, 237, 0.25);
+      color: #fff;
+    }
+
+    .btn-ffmpeg-action.install {
+      background: var(--grd-green);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .ffmpeg-code-box {
+      background: #090b10;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      word-break: break-all;
+    }
   </style>
 </head>
 <body>
@@ -1377,7 +1508,9 @@
         <a href="../images_to_webp/index.html" class="hdr-nav-link" title="Batch Images to WebP Converter">
           <span class="nav-icon">🖼️</span> WebP Converter
         </a>
-      </nav>
+        <a href="../media_to_base64/index.html" class="hdr-nav-link" title="Batch Media to Base64 Converter">
+          <span class="nav-icon">🔤</span> Base64 Studio
+        </a>      </nav>
 
       <div class="hdr-right">
         <button class="btn-hdr btn-hdr-ghost" id="btnClearAll" style="display: none;">
@@ -1421,6 +1554,36 @@
               <span>Custom</span>
               <span class="sub">Set Limit</span>
             </div>
+          </div>
+        </div>
+
+        <!-- FFmpeg Binary Engine Bar -->
+        <div class="ffmpeg-engine-bar" id="ffmpegEngineBar">
+          <div class="ffmpeg-status-left">
+            <span class="ffmpeg-dot" id="ffmpegStatusDot"></span>
+            <div>
+              <div class="ffmpeg-status-title">
+                <span id="ffmpegStatusTitle">Checking Native FFmpeg Binary Engine…</span>
+                <span class="pss-badge badge-purple" id="ffmpegCodecBadge">libx264 • H.264 CRF</span>
+              </div>
+              <div class="ffmpeg-status-sub" id="ffmpegStatusSub">Probing local &amp; global FFmpeg installation…</div>
+            </div>
+          </div>
+          <div class="ffmpeg-controls-right">
+            <div class="engine-mode-switch" role="group" aria-label="Video Transcoding Engine">
+              <button type="button" class="engine-mode-btn active" id="btnModeFfmpeg" data-engine="ffmpeg" title="Use Native FFmpeg Binary (libx264 H.264 CRF, yuv420p, faststart)">
+                🚀 FFmpeg Binary (H.264)
+              </button>
+              <button type="button" class="engine-mode-btn" id="btnModeBrowser" data-engine="browser" title="Use In-Browser Canvas MediaRecorder">
+                🌐 Browser MediaRecorder
+              </button>
+            </div>
+            <button type="button" class="btn-ffmpeg-action install" id="btnInstallFfmpegQuick" title="Install &amp; Enable FFmpeg Binary Globally and Locally">
+              ⚡ Install / Enable FFmpeg
+            </button>
+            <button type="button" class="btn-ffmpeg-action" id="btnOpenFfmpegModal" title="Open FFmpeg Binary &amp; Global Installation Manager">
+              ⚙️ FFmpeg Setup
+            </button>
           </div>
         </div>
 
@@ -1661,6 +1824,68 @@
           <button class="modal-close" data-close="modalInspect">✕</button>
         </div>
         <div class="modal-body" id="inspectBody"></div>
+      </div>
+    </div>
+
+    <!-- Modal: FFmpeg Binary & Global Installer Manager -->
+    <div class="modal-backdrop" id="modalFfmpeg">
+      <div class="modal-card" style="max-width: 760px;">
+        <div class="modal-head">
+          <h3><span>🚀</span> FFmpeg Binary Engine &amp; Global Installation</h3>
+          <button class="modal-close" data-close="modalFfmpeg">✕</button>
+        </div>
+        <div class="modal-body">
+          <div id="ffmpegModalStatusCard" style="padding:14px 16px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-light); display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <strong id="ffmpegModalStateLabel" style="font-size:14px; color:#fff;">FFmpeg Binary Status</strong>
+              <span class="pss-badge badge-green" id="ffmpegModalGlobalBadge">Checking…</span>
+            </div>
+            <div id="ffmpegModalDetails" style="font-size:12px; color:var(--text-secondary); font-family:'JetBrains Mono', monospace; line-height:1.6;">
+              Detecting local and global FFmpeg binary…
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" class="btn-fc btn-fc-green" id="btnRunFfmpegInstallModal" style="padding:10px 18px; font-size:13px;">
+              ⚡ Install &amp; Enable FFmpeg (Global + Local)
+            </button>
+            <button type="button" class="btn-fc btn-fc-primary" id="btnRefreshFfmpegStatus" style="padding:10px 16px; font-size:13px;">
+              🔄 Re-verify Binary Status
+            </button>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <span style="font-size:12px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.6px;">
+              1. Start Local Native FFmpeg Server (Enables Browser UI &rarr; FFmpeg Binary Bridge)
+            </span>
+            <div class="ffmpeg-code-box">
+              <span id="cmdStartServer">node compressor/server.js</span>
+              <button type="button" class="btn-ffmpeg-action" data-copy="node compressor/server.js">📋 Copy</button>
+            </div>
+            <span style="font-size:11.5px; color:var(--text-muted);">
+              Or double-click <code>compressor/start_app.bat</code> (runs on <code>http://localhost:3200/compressor/index.html</code>) or <code>mip_reposition_app/start_app.bat</code> (<code>http://localhost:3100/compressor/index.html</code>).
+            </span>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <span style="font-size:12px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.6px;">
+              2. Global &amp; Local FFmpeg CLI Installation Command
+            </span>
+            <div class="ffmpeg-code-box">
+              <span>npm.cmd install -g ffmpeg-static &amp;&amp; npm.cmd --prefix compressor install ffmpeg-static</span>
+              <button type="button" class="btn-ffmpeg-action" data-copy="npm.cmd install -g ffmpeg-static && npm.cmd --prefix compressor install ffmpeg-static">📋 Copy</button>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <span style="font-size:12px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.6px;">
+              3. Active FFmpeg H.264 Encoding Pipeline
+            </span>
+            <div class="ffmpeg-code-box">
+              <span id="ffmpegPipelinePreview">ffmpeg -y -i input.mp4 -c:v libx264 -crf 26 -preset slow -pix_fmt yuv420p -movflags +faststart -an output.mp4</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

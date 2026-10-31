@@ -3,6 +3,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const engine=require('./engine.cjs');
+const ffmpegEngine=require('../compressor/ffmpeg-engine.cjs');
 const projects=new Map();
 const PORT=Number(process.env.PORT)||3100;
 async function body(req,limit=160*1024*1024){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>limit)throw new Error('Upload exceeds 160 MB.');chunks.push(c);}return Buffer.concat(chunks);}
@@ -16,6 +17,12 @@ const server=http.createServer(async(req,res)=>{try{
     return send(res,200,{id,name:p.pkg.name||'React project',variants:p.variants,scenes:p.scenes,positions:p.positions,files:p.files.size,css:p.css});
   }
   if(url.pathname==='/api/sample') return send(res,200,fs.readFileSync(path.join(__dirname,'sample.zip')),'application/zip');
+  if(url.pathname==='/api/ffmpeg/status') return send(res,200,ffmpegEngine.resolveFfmpeg());
+  if(req.method==='POST'&&url.pathname==='/api/ffmpeg/install') return send(res,200,await ffmpegEngine.installFfmpeg());
+  if(req.method==='POST'&&url.pathname==='/api/ffmpeg/transcode'){
+    const payload=JSON.parse((await body(req)).toString('utf8'));
+    return send(res,200,await ffmpegEngine.transcodeVideoBase64(payload));
+  }
   if(url.pathname.startsWith('/api/')){
     const p=projects.get(url.searchParams.get('id'));if(!p)return send(res,404,{error:'Project expired. Please import the ZIP again.'});
     if(url.pathname==='/api/preview'){
