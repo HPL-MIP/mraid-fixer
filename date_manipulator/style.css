@@ -1070,3 +1070,10 @@ body {
 .display-zoom-label { min-width: 48px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
 .display-stage { overflow: auto; min-width: 0; scrollbar-gutter: stable; }
 .display-zoom-controls button:disabled { opacity: .45; cursor: default; }
+
+.display-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.display-language-settings { position: relative; font-size: 12px; max-width: 340px; }
+.display-language-settings summary { cursor: pointer; }
+.display-language-settings p { margin: 8px 0; color: var(--text-muted); line-height: 1.5; }
+.display-language-settings input { width: 100%; }
+.display-variant-label { color: var(--text-muted); font-size: 12px; margin: -4px 0 12px; overflow-wrap: anywhere; }

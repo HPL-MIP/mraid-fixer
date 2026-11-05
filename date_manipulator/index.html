@@ -1117,6 +1117,14 @@
 .display-stage { overflow: auto; min-width: 0; scrollbar-gutter: stable; }
 .display-zoom-controls button:disabled { opacity: .45; cursor: default; }
 
+
+.display-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.display-language-settings { position: relative; font-size: 12px; max-width: 340px; }
+.display-language-settings summary { cursor: pointer; }
+.display-language-settings p { margin: 8px 0; color: var(--text-muted); line-height: 1.5; }
+.display-language-settings input { width: 100%; }
+.display-variant-label { color: var(--text-muted); font-size: 12px; margin: -4px 0 12px; overflow-wrap: anywhere; }
+
   </style>
 </head>
 <body>
@@ -1981,7 +1989,8 @@
         // Zoom Select Change
         this.dom.zoomSelect.addEventListener('change', (e) => {
           this.state.zoom = e.target.value;
-      this.displayZooms = []; // A toolbar zoom choice applies to every display.
+      this.displayZooms = [];
+      this.variantZooms.clear(); // A toolbar zoom choice applies to every display.
           this.applyDeviceDimensions();
         });
 
@@ -1989,7 +1998,7 @@
         this.dom.reloadBtn.addEventListener('click', () => {
           this.state.startTimeReal = Date.now();
           const activeFile = this.files.find(f => f.id === this.activeFileId);
-          if (this.displayIds.length > 1) {
+          if (!this.displayGrid.hidden) {
           this.renderActiveFile();
         } else if (activeFile && activeFile.isDirectUrl) {
             const currentSrc = this.dom.previewIframe.src;
@@ -2295,7 +2304,7 @@
               return;
             }
             this.activeFileId = file.id;
-        if (this.displayIds.length > 1 && !this.displayIds.includes(file.id)) {
+        if (this.displayIds.length && !this.displayIds.includes(file.id)) {
           this.showAllDisplays = false;
           this.displayIds[0] = file.id;
         }
@@ -2316,7 +2325,7 @@
         this.renderActiveFile();
       }
 
-      buildInjectedHtml(rawHtml) {
+      buildInjectedHtml(rawHtml, locale = this.state.locale) {
         const targetEpoch = this.getSimulatedEpoch();
         const startTimeReal = this.state.startTimeReal || Date.now();
 
@@ -2327,7 +2336,7 @@ window.__SIMULATOR_CONFIG__ = {
   targetEpoch: ${targetEpoch},
   startTimeReal: ${startTimeReal},
   mode: '${this.state.timeMode}',
-  locale: '${this.state.locale}'
+  locale: '${locale}'
 };
 
 (function() {
@@ -2467,9 +2476,9 @@ window.__SIMULATOR_CONFIG__ = {
         let outputHtml = rawHtml;
         
         // Patch hardcoded SIP template dateLocale if present
-        outputHtml = outputHtml.replace(/const\s+dateLocale\s*=\s*"[^"]*";/g, `const dateLocale = "${this.state.locale}";`);
-        outputHtml = outputHtml.replace(/var\s+dateLocale\s*=\s*"[^"]*";/g, `var dateLocale = "${this.state.locale}";`);
-        outputHtml = outputHtml.replace(/let\s+dateLocale\s*=\s*"[^"]*";/g, `let dateLocale = "${this.state.locale}";`);
+        outputHtml = outputHtml.replace(/const\s+dateLocale\s*=\s*"[^"]*";/g, `const dateLocale = "${locale}";`);
+        outputHtml = outputHtml.replace(/var\s+dateLocale\s*=\s*"[^"]*";/g, `var dateLocale = "${locale}";`);
+        outputHtml = outputHtml.replace(/let\s+dateLocale\s*=\s*"[^"]*";/g, `let dateLocale = "${locale}";`);
 
         if (outputHtml.includes('<head>')) {
           outputHtml = outputHtml.replace('<head>', '<head>' + simulatorScript);
@@ -2485,6 +2494,12 @@ window.__SIMULATOR_CONFIG__ = {
     
   // Multiple displays share the toolbar simulation settings.
   setupDisplays() {
+    this.allLanguages = false;
+    this.bothOrientations = false;
+    this.manualLanguages = [];
+    this.languageCache = new WeakMap();
+    this.variantZooms = new Map();
+    this.hiddenVariants = new Set();
     this.displayZooms = [];
     this.displayIds = [];
     this.showAllDisplays = false;
@@ -2512,14 +2527,179 @@ window.__SIMULATOR_CONFIG__ = {
     });
     this.allDisplaysButton = button('Show all', () => {
       this.showAllDisplays = true;
+      this.hiddenVariants.clear();
       this.renderActiveFile();
     });
     this.singleDisplayButton = button('Single display', () => {
       this.showAllDisplays = false;
+      this.allLanguages = this.bothOrientations = false;
+      this.languagesToggle.checked = this.orientationsToggle.checked = false;
+      this.hiddenVariants.clear();
       this.displayIds = [];
       this.renderActiveFile();
     });
+    const toggle = (text, property) => {
+      const label = document.createElement('label');
+      label.className = 'display-toggle';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.addEventListener('change', () => {
+        this[property] = input.checked;
+        this.hiddenVariants.clear();
+        if (!this.displayIds.length && this.activeFileId) this.displayIds = [this.activeFileId];
+        this.renderActiveFile();
+      });
+      label.append(input, document.createTextNode(text));
+      controls.appendChild(label);
+      return input;
+    };
+    this.languagesToggle = toggle('Show all languages', 'allLanguages');
+    this.orientationsToggle = toggle('Both orientations', 'bothOrientations');
+    const languageSettings = document.createElement('details');
+    languageSettings.className = 'display-language-settings';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Project languages';
+    const hint = document.createElement('p');
+    hint.textContent = 'Detected from HTML translation keys and language lists. Override with comma-separated codes; leave blank for automatic detection. Direct URL previews cannot simulate languages.';
+    this.languagesInput = document.createElement('input');
+    this.languagesInput.className = 'select-control';
+    this.languagesInput.placeholder = 'Automatic (e.g. en, fr, de)';
+    this.languagesInput.setAttribute('aria-label', 'Project language codes');
+    this.languagesInput.addEventListener('change', () => {
+      try {
+        const values = this.languagesInput.value.split(',').map(value => value.trim()).filter(Boolean);
+        this.manualLanguages = Intl.getCanonicalLocales(values);
+        this.languagesInput.setCustomValidity('');
+        this.hiddenVariants.clear();
+        this.renderActiveFile();
+      } catch (_) {
+        this.languagesInput.setCustomValidity('Enter valid language codes separated by commas, such as en, fr-FR, de.');
+        this.languagesInput.reportValidity();
+      }
+    });
+    this.detectedLanguagesText = document.createElement('p');
+    this.detectedLanguagesText.setAttribute('aria-live', 'polite');
+    const useDetected = document.createElement('button');
+    useDetected.type = 'button';
+    useDetected.className = 'btn';
+    useDetected.textContent = 'Use detected languages';
+    useDetected.addEventListener('click', () => {
+      this.manualLanguages = [];
+      this.languagesInput.value = '';
+      this.languagesInput.setCustomValidity('');
+      this.hiddenVariants.clear();
+      this.renderActiveFile();
+    });
+    languageSettings.append(summary, hint, this.detectedLanguagesText, this.languagesInput, useDetected);
+    controls.appendChild(languageSettings);
     this.dom.deviceSelect.closest('.toolbar-row').appendChild(controls);
+  }
+
+
+  detectProjectLanguages(file) {
+    if (!file || file.isDirectUrl) return [];
+    const cached = this.languageCache.get(file);
+    if (cached && cached.html === file.rawHtml) return cached.languages;
+    const known = new Set(('aa ab ae af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de dv dz ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig ii ik io is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu fil haw ckb').split(' '));
+    const normalize = value => {
+      if (typeof value !== 'string' || !/^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(value.trim())) return null;
+      try {
+        const locale = Intl.getCanonicalLocales(value.trim().replace(/_/g, '-'))[0];
+        return known.has(locale.split('-')[0]) ? locale : null;
+      } catch (_) { return null; }
+    };
+    const found = new Set();
+    const referencedLanguages = new Set();
+    const add = value => { const locale = normalize(value); if (locale) found.add(locale); };
+    const doc = new DOMParser().parseFromString(file.rawHtml || '', 'text/html');
+    const sources = [];
+    for (const script of doc.scripts) {
+      if (script.textContent) sources.push(script.textContent);
+      const src = script.getAttribute('src') || '';
+      if (/^data:(?:text|application)\/(?:javascript|ecmascript)/i.test(src)) {
+        try {
+          const comma = src.indexOf(',');
+          const body = src.slice(comma + 1);
+          sources.push(/;base64/i.test(src.slice(0, comma)) ? atob(body) : decodeURIComponent(body));
+        } catch (_) { /* Continue inspecting other sources. */ }
+      }
+    }
+    for (const source of sources) {
+      // Bundlers extract translations into variables: {en:packA,fr:packB}.
+      // Require the whole map to contain language keys and identifier references,
+      // with at least two languages; isolated framework properties are not evidence.
+      for (const match of source.matchAll(/\{\s*((?:(?:["'][a-z]{2,3}(?:[-_][a-z0-9]{2,8})*["']|[a-z]{2,3})\s*:\s*[a-z_$][\w$]*(?:\.[a-z_$][\w$]*)*\s*,\s*)+(?:["'][a-z]{2,3}(?:[-_][a-z0-9]{2,8})*["']|[a-z]{2,3})\s*:\s*[a-z_$][\w$]*(?:\.[a-z_$][\w$]*)*\s*,?)\}/gi)) {
+        const keys = [...match[1].matchAll(/(?:^|,)\s*["']?([a-z]{2,3}(?:[-_][a-z0-9]{2,8})*)["']?\s*:/gi)]
+          .map(entry => normalize(entry[1]));
+        if (keys.length >= 2 && keys.every(Boolean)) keys.forEach(locale => referencedLanguages.add(locale));
+      }
+      // Quoted/unquoted dictionaries, including arrays and uppercase keys.
+      for (const match of source.matchAll(/(?:[{,]\s*)(?:["']([a-z]{2,3}(?:[-_][a-z0-9]{2,8})*)["']|([a-z]{2,3}))\s*:\s*(?:\{|\[|["'\x60])/gi)) add(match[1] || match[2]);
+      for (const match of source.matchAll(/\b(?:[a-z_$]*(?:languages|locales|langs)[a-z_$]*)\s*["']?\s*[:=]\s*\[([^\]]*)\]/gi)) {
+        for (const entry of match[1].matchAll(/["'\x60]([^"'\x60]+)["'\x60]/g)) add(entry[1]);
+      }
+      for (const match of source.matchAll(/\b(?:language|locale|lang|languageCode|localeCode|defaultLanguage|defaultLocale)\s*["']?\s*[:=]\s*["']([^"']+)["']/gi)) add(match[1]);
+      // Language switches and comparisons, including navigator aliases.
+      const identifiers = new Set(['language', 'locale', 'lang', 'userLang', 'browserLang', 'currentLanguage', 'currentLocale']);
+      for (const match of source.matchAll(/\b([\w$]+)\s*=\s*[^;\n]{0,100}?navigator\.(?:language|languages|userLanguage|browserLanguage)/g)) identifiers.add(match[1]);
+      for (const match of source.matchAll(/([\w$.]+)(?:\.toLowerCase\(\))?\s*(?:===?|!==?)\s*["']([^"']+)["']/g)) {
+        if (/lang|locale/i.test(match[1]) || identifiers.has(match[1])) add(match[2]);
+      }
+      for (const match of source.matchAll(/([\w$.]+)\.(?:startsWith|includes|indexOf)\(\s*["']([^"']+)["']/g)) {
+        if (/lang|locale/i.test(match[1]) || identifiers.has(match[1])) add(match[2].replace(/[-_]$/, ''));
+      }
+      for (const match of source.matchAll(/switch\s*\(\s*([\w$.]+)(?:\.split\([^)]*\)\[0\])?\s*\)\s*\{([\s\S]*?)(?=\bdefault\s*:|$)/g)) {
+        if (/lang|locale/i.test(match[1]) || identifiers.has(match[1])) {
+          for (const entry of match[2].matchAll(/\bcase\s*["']([^"']+)["']\s*:/g)) add(entry[1]);
+        }
+      }
+      const assetLocales = new Set();
+      for (const match of source.matchAll(/["'\x60](?:\.\/)?(?:assets|images|img)\/([a-z]{2,3}(?:[-_][a-z0-9]{2,8})*)\//gi)) {
+        const locale = normalize(match[1]);
+        if (locale) assetLocales.add(locale);
+      }
+      if (assetLocales.size > 1) assetLocales.forEach(add);
+    }
+    for (const node of doc.querySelectorAll('[data-lang], [data-language], [data-locale], [hreflang], [lang]:not(html)')) {
+      for (const attr of ['lang', 'data-lang', 'data-language', 'data-locale', 'hreflang']) {
+        if (node.hasAttribute(attr)) add(node.getAttribute(attr));
+      }
+    }
+    for (const select of doc.querySelectorAll('select')) {
+      if (/lang|locale/i.test(select.id + ' ' + select.name)) {
+        for (const option of select.options) add(option.value);
+      }
+    }
+    // Complete translation maps outrank incidental language-like strings in
+    // bundled libraries (React's composition-event locale, HTML 'as', etc.).
+    if (referencedLanguages.size > 1) {
+      found.clear();
+      referencedLanguages.forEach(add);
+    }
+    // The document default is a fallback, not an extra translation.
+    if (!found.size) add(doc.documentElement.lang);
+    const languages = [...found].filter(locale => locale.includes('-') || ![...found].some(other => other.startsWith(locale + '-')));
+    this.languageCache.set(file, { html: file.rawHtml, languages });
+    return languages;
+  }
+
+  getDisplayVariants() {
+    const variants = [];
+    const ids = this.displayIds.length ? this.displayIds : [this.activeFileId];
+    ids.forEach((id, baseIndex) => {
+      const file = this.files.find(f => f.id === id);
+      if (!file) return;
+      const detected = this.detectProjectLanguages(file);
+      const locales = this.allLanguages && !file.isDirectUrl
+        ? (this.manualLanguages.length ? this.manualLanguages : detected.length ? detected : [this.state.locale])
+        : [this.state.locale];
+      const orientations = this.bothOrientations ? ['portrait', 'landscape'] : [this.state.orientation];
+      locales.forEach(locale => orientations.forEach(orientation => {
+        const key = JSON.stringify([baseIndex, id, this.allLanguages ? locale : '', this.bothOrientations ? orientation : '']);
+        if (!this.hiddenVariants.has(key)) variants.push({ id, baseIndex, locale, orientation, key });
+      }));
+    });
+    return variants;
   }
 
   syncDisplays() {
@@ -2536,7 +2716,15 @@ window.__SIMULATOR_CONFIG__ = {
     this.addDisplayButton.disabled = this.files.length < 2 ||
       this.displayIds.length >= this.files.length;
     this.allDisplaysButton.disabled = this.files.length < 2;
-    const multiple = this.displayIds.length > 1;
+    this.languagesToggle.disabled = this.orientationsToggle.disabled = !this.files.length;
+    const activeProject = this.files.find(file => file.id === this.activeFileId);
+    const detectedLanguages = this.detectProjectLanguages(activeProject);
+    this.detectedLanguagesText.textContent = 'Detected for selected file: ' +
+      (detectedLanguages.join(', ') || 'none') +
+      (this.manualLanguages.length ? '. Manual override is active.' : '. Automatic detection is active.');
+    this.displayVariants = this.getDisplayVariants();
+    const multiple = this.displayVariants.length > 1 ||
+      (this.files.length > 0 && (this.allLanguages || this.bothOrientations));
     this.singleDisplayButton.hidden = !multiple;
     this.dom.canvasWrapper.classList.toggle('multiple-displays', multiple);
     this.dom.deviceWrapper.style.display = multiple || !this.files.length ? 'none' : '';
@@ -2556,11 +2744,12 @@ window.__SIMULATOR_CONFIG__ = {
     this.dom.previewIframe.src = 'about:blank';
     this.dom.emptyState.style.display = 'none';
     if (this.dom.activeFileName) {
-      this.dom.activeFileName.textContent = this.displayIds.length + ' displays';
-      this.dom.activeFileName.title = 'All displays share the toolbar settings';
+      this.dom.activeFileName.textContent = this.displayVariants.length + ' displays';
+      this.dom.activeFileName.title = 'Previews share date, time, and device settings';
       this.dom.activeFilePill.style.display = 'inline-flex';
     }
-    this.displayIds.forEach((id, index) => {
+    this.displayVariants.forEach((variant, index) => {
+      const { id, baseIndex, locale, orientation, key } = variant;
       const file = this.files.find(f => f.id === id);
       const card = document.createElement('section');
       card.className = 'display-card';
@@ -2574,7 +2763,8 @@ window.__SIMULATOR_CONFIG__ = {
       select.title = file.name;
       select.addEventListener('change', () => {
         this.showAllDisplays = false;
-        this.displayIds[index] = select.value;
+        this.displayIds[baseIndex] = select.value;
+        this.hiddenVariants.clear();
         this.renderActiveFile();
       });
       const remove = document.createElement('button');
@@ -2583,13 +2773,29 @@ window.__SIMULATOR_CONFIG__ = {
       remove.setAttribute('aria-label', 'Remove display ' + (index + 1));
       remove.addEventListener('click', () => {
         this.showAllDisplays = false;
-        this.displayIds.splice(index, 1);
-        this.displayZooms.splice(index, 1);
+        if (this.allLanguages || this.bothOrientations) {
+          this.hiddenVariants.add(key);
+          if (this.displayVariants.length === 1) {
+            this.singleDisplayButton.click();
+            return;
+          }
+        } else {
+          this.displayIds.splice(baseIndex, 1);
+          this.displayZooms.splice(baseIndex, 1);
+          this.variantZooms.clear();
+        }
         if (this.displayIds.length === 1) this.activeFileId = this.displayIds[0];
         this.renderFilesList();
         this.renderActiveFile();
       });
       header.append(select, remove);
+      const variantLabel = document.createElement('div');
+      variantLabel.className = 'display-variant-label';
+      variantLabel.textContent = (file.isDirectUrl ? 'URL language (unchanged)' : locale) + ' / ' +
+        (orientation === 'portrait' ? 'Portrait' : 'Landscape');
+      if (this.allLanguages && !file.isDirectUrl && !this.manualLanguages.length && !this.detectProjectLanguages(file).length) {
+        variantLabel.textContent += ' / No languages detected; using toolbar language';
+      }
       const zoomControls = document.createElement('div');
       zoomControls.className = 'display-zoom-controls';
       const zoomButton = (label, title, action) => {
@@ -2604,7 +2810,7 @@ window.__SIMULATOR_CONFIG__ = {
       };
       const changeZoom = delta => {
         const current = Number(card.dataset.scale);
-        this.displayZooms[index] = Math.max(0.1, Math.min(2, Math.round((current + delta) * 100) / 100));
+        this.variantZooms.set(key, Math.max(0.1, Math.min(2, Math.round((current + delta) * 100) / 100)));
         this.layoutDisplays();
       };
       zoomButton('-', 'Zoom out', () => changeZoom(-0.1)).classList.add('display-zoom-out');
@@ -2615,7 +2821,7 @@ window.__SIMULATOR_CONFIG__ = {
       zoomControls.appendChild(zoomLabel);
       zoomButton('+', 'Zoom in', () => changeZoom(0.1)).classList.add('display-zoom-in');
       zoomButton('Fit', 'Fit', () => {
-        this.displayZooms[index] = 'fit';
+        this.variantZooms.set(key, 'fit');
         this.layoutDisplays();
       });
       const stage = document.createElement('div');
@@ -2626,15 +2832,15 @@ window.__SIMULATOR_CONFIG__ = {
       frame.removeAttribute('id');
       frame.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
       const iframe = frame.querySelector('iframe');
-      iframe.title = file.name;
+      iframe.title = file.name + ' / ' + locale + ' / ' + orientation;
       iframe.removeAttribute('src');
       iframe.removeAttribute('srcdoc');
       viewport.appendChild(frame);
       stage.appendChild(viewport);
-      card.append(header, zoomControls, stage);
+      card.append(header, variantLabel, zoomControls, stage);
       this.displayGrid.appendChild(card);
       if (file.isDirectUrl) iframe.src = file.fullUrl;
-      else iframe.srcdoc = this.buildInjectedHtml(file.rawHtml);
+      else iframe.srcdoc = this.buildInjectedHtml(file.rawHtml, locale);
     });
     this.layoutDisplays();
     this.updateStatusDisplay();
@@ -2643,17 +2849,18 @@ window.__SIMULATOR_CONFIG__ = {
 
   layoutDisplays() {
     const cfg = DEVICE_CONFIGS[this.state.device] || DEVICE_CONFIGS.iphone16;
-    const landscape = this.state.orientation === 'landscape';
-    const width = landscape ? cfg.height : cfg.width;
-    const height = landscape ? cfg.width : cfg.height;
     this.displayGrid.querySelectorAll('.display-card').forEach((card, index) => {
+      const variant = this.displayVariants[index];
+      const landscape = (this.bothOrientations ? variant.orientation : this.state.orientation) === 'landscape';
+      const width = landscape ? cfg.height : cfg.width;
+      const height = landscape ? cfg.width : cfg.height;
       const viewport = card.querySelector('.display-viewport');
       const frame = card.querySelector('.device-frame');
       const stage = card.querySelector('.display-stage');
-      const availableHeight = Math.max(240, this.dom.canvasWrapper.clientHeight - 160);
+      const availableHeight = Math.max(240, this.dom.canvasWrapper.clientHeight - 185);
       stage.style.maxHeight = availableHeight + 'px';
       const availableWidth = Math.max(1, stage.clientWidth);
-      const zoom = this.displayZooms[index] ?? this.state.zoom;
+      const zoom = this.variantZooms.get(variant.key) ?? this.state.zoom;
       const scale = zoom === 'fit'
         ? Math.min(1, availableWidth / width, availableHeight / height)
         : parseFloat(zoom) || 1;
@@ -2733,7 +2940,7 @@ window.__SIMULATOR_CONFIG__ = {
       }
 
       applyDeviceDimensions() {
-    if (this.displayIds && this.displayIds.length > 1) { this.layoutDisplays(); return; }
+    if (this.displayGrid && !this.displayGrid.hidden) { this.layoutDisplays(); return; }
         const cfg = DEVICE_CONFIGS[this.state.device] || DEVICE_CONFIGS.iphone16;
         const isLandscape = this.state.orientation === 'landscape';
 
