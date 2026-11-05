@@ -1111,6 +1111,12 @@
 .display-viewport .device-frame { position: absolute; top: 0; left: 0; transition: none; }
 .display-controls button:disabled { opacity: .45; cursor: default; }
 
+
+.display-zoom-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.display-zoom-label { min-width: 48px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.display-stage { overflow: auto; min-width: 0; scrollbar-gutter: stable; }
+.display-zoom-controls button:disabled { opacity: .45; cursor: default; }
+
   </style>
 </head>
 <body>
@@ -1975,6 +1981,7 @@
         // Zoom Select Change
         this.dom.zoomSelect.addEventListener('change', (e) => {
           this.state.zoom = e.target.value;
+      this.displayZooms = []; // A toolbar zoom choice applies to every display.
           this.applyDeviceDimensions();
         });
 
@@ -2478,6 +2485,7 @@ window.__SIMULATOR_CONFIG__ = {
     
   // Multiple displays share the toolbar simulation settings.
   setupDisplays() {
+    this.displayZooms = [];
     this.displayIds = [];
     this.showAllDisplays = false;
     this.displayGrid = document.createElement('div');
@@ -2497,14 +2505,13 @@ window.__SIMULATOR_CONFIG__ = {
     };
     this.addDisplayButton = button('Add display', () => {
       this.showAllDisplays = false;
-      if (!this.displayIds.length) this.displayIds = [this.activeFileId];
+      if (!this.displayIds.length) { this.displayIds = [this.activeFileId]; this.displayZooms = []; }
       const next = this.files.find(f => !this.displayIds.includes(f.id));
       if (next) this.displayIds.push(next.id);
       this.renderActiveFile();
     });
     this.allDisplaysButton = button('Show all', () => {
       this.showAllDisplays = true;
-      this.displayIds = this.files.map(f => f.id);
       this.renderActiveFile();
     });
     this.singleDisplayButton = button('Single display', () => {
@@ -2516,8 +2523,16 @@ window.__SIMULATOR_CONFIG__ = {
   }
 
   syncDisplays() {
-    if (this.showAllDisplays) this.displayIds = this.files.map(f => f.id);
-    this.displayIds = this.displayIds.filter(id => this.files.some(f => f.id === id));
+    if (this.showAllDisplays) {
+      const previousIds = this.displayIds;
+      const previousZooms = this.displayZooms;
+      this.displayIds = this.files.map(f => f.id);
+      this.displayZooms = this.displayIds.map(id => previousZooms[previousIds.indexOf(id)]);
+    }
+    const remaining = this.displayIds.map((id, index) => ({ id, zoom: this.displayZooms[index] }))
+      .filter(display => this.files.some(f => f.id === display.id));
+    this.displayIds = remaining.map(display => display.id);
+    this.displayZooms = remaining.map(display => display.zoom);
     this.addDisplayButton.disabled = this.files.length < 2 ||
       this.displayIds.length >= this.files.length;
     this.allDisplaysButton.disabled = this.files.length < 2;
@@ -2569,11 +2584,42 @@ window.__SIMULATOR_CONFIG__ = {
       remove.addEventListener('click', () => {
         this.showAllDisplays = false;
         this.displayIds.splice(index, 1);
+        this.displayZooms.splice(index, 1);
         if (this.displayIds.length === 1) this.activeFileId = this.displayIds[0];
         this.renderFilesList();
         this.renderActiveFile();
       });
       header.append(select, remove);
+      const zoomControls = document.createElement('div');
+      zoomControls.className = 'display-zoom-controls';
+      const zoomButton = (label, title, action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn';
+        button.textContent = label;
+        button.setAttribute('aria-label', title + ' display ' + (index + 1));
+        button.addEventListener('click', action);
+        zoomControls.appendChild(button);
+        return button;
+      };
+      const changeZoom = delta => {
+        const current = Number(card.dataset.scale);
+        this.displayZooms[index] = Math.max(0.1, Math.min(2, Math.round((current + delta) * 100) / 100));
+        this.layoutDisplays();
+      };
+      zoomButton('-', 'Zoom out', () => changeZoom(-0.1)).classList.add('display-zoom-out');
+      const zoomLabel = document.createElement('output');
+      zoomLabel.className = 'display-zoom-label';
+      zoomLabel.setAttribute('aria-live', 'polite');
+      zoomLabel.setAttribute('aria-label', 'Zoom for display ' + (index + 1));
+      zoomControls.appendChild(zoomLabel);
+      zoomButton('+', 'Zoom in', () => changeZoom(0.1)).classList.add('display-zoom-in');
+      zoomButton('Fit', 'Fit', () => {
+        this.displayZooms[index] = 'fit';
+        this.layoutDisplays();
+      });
+      const stage = document.createElement('div');
+      stage.className = 'display-stage';
       const viewport = document.createElement('div');
       viewport.className = 'display-viewport';
       const frame = this.dom.deviceFrame.cloneNode(true);
@@ -2584,7 +2630,8 @@ window.__SIMULATOR_CONFIG__ = {
       iframe.removeAttribute('src');
       iframe.removeAttribute('srcdoc');
       viewport.appendChild(frame);
-      card.append(header, viewport);
+      stage.appendChild(viewport);
+      card.append(header, zoomControls, stage);
       this.displayGrid.appendChild(card);
       if (file.isDirectUrl) iframe.src = file.fullUrl;
       else iframe.srcdoc = this.buildInjectedHtml(file.rawHtml);
@@ -2599,14 +2646,21 @@ window.__SIMULATOR_CONFIG__ = {
     const landscape = this.state.orientation === 'landscape';
     const width = landscape ? cfg.height : cfg.width;
     const height = landscape ? cfg.width : cfg.height;
-    this.displayGrid.querySelectorAll('.display-card').forEach(card => {
+    this.displayGrid.querySelectorAll('.display-card').forEach((card, index) => {
       const viewport = card.querySelector('.display-viewport');
       const frame = card.querySelector('.device-frame');
-      const availableWidth = Math.max(100, card.clientWidth - 24);
-      const availableHeight = Math.max(240, this.dom.canvasWrapper.clientHeight - 110);
-      const scale = this.state.zoom === 'fit'
+      const stage = card.querySelector('.display-stage');
+      const availableHeight = Math.max(240, this.dom.canvasWrapper.clientHeight - 160);
+      stage.style.maxHeight = availableHeight + 'px';
+      const availableWidth = Math.max(1, stage.clientWidth);
+      const zoom = this.displayZooms[index] ?? this.state.zoom;
+      const scale = zoom === 'fit'
         ? Math.min(1, availableWidth / width, availableHeight / height)
-        : parseFloat(this.state.zoom) || 1;
+        : parseFloat(zoom) || 1;
+      card.dataset.scale = scale;
+      card.querySelector('.display-zoom-label').textContent = Math.round(scale * 100) + '%';
+      card.querySelector('.display-zoom-out').disabled = scale <= 0.1;
+      card.querySelector('.display-zoom-in').disabled = scale >= 2;
       frame.className = 'device-frame ' + cfg.type + '-style ' + (landscape ? 'landscape' : 'portrait');
       Object.assign(frame.style, {
         width: width + 'px', height: height + 'px',

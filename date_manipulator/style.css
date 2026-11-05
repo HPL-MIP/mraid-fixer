@@ -1065,3 +1065,8 @@ body {
 .display-controls button:disabled { opacity: .45; cursor: default; }
 
 .display-controls [hidden] { display: none; }
+
+.display-zoom-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.display-zoom-label { min-width: 48px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.display-stage { overflow: auto; min-width: 0; scrollbar-gutter: stable; }
+.display-zoom-controls button:disabled { opacity: .45; cursor: default; }
