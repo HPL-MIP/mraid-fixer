@@ -1100,6 +1100,7 @@
             cancelAnimationFrame(animId);
             clearInterval(intervalId);
             URL.revokeObjectURL(videoUrl);
+            if (chunks.length === 0) {
             if (chunks.length === 0 || framesDrawn < 2) {
               done({ b64: b64, mime: mime });
               return;
@@ -1118,6 +1119,13 @@
             };
             reader.readAsDataURL(outBlob);
           };
+
+          let animId;
+          function drawFrame() {
+            if (video.paused || video.ended) return;
+            ctx.drawImage(video, 0, 0, targetW, targetH);
+            animId = requestAnimationFrame(drawFrame);
+          }
 
           video.onended = () => {
             cancelAnimationFrame(animId);
@@ -1140,6 +1148,7 @@
           } catch (_) {}
           recorder.start(100);
           video.play().then(() => {
+            drawFrame();
             rafLoop();
             intervalId = setInterval(drawFrame, Math.round(1000 / fps));
           }).catch(() => {
@@ -1195,8 +1204,10 @@
     });
   }
 
+  // Safe HTML Minification Engine (removes redundant whitespace & comments, never smashes inline text)
   // Safe HTML Minification Engine (removes redundant whitespace & comments outside <script>/<style>/<pre>/<textarea>)
   function minifyHtmlMarkup(html) {
+    return html
     const protectedBlocks = [];
     const masked = html.replace(/<(script|style|pre|textarea)\b[^>]*>[\s\S]*?<\/\1>/gi, (match) => {
       const idx = protectedBlocks.length;
@@ -1214,8 +1225,10 @@
     return cleaned.replace(/\x00__HTML_PROT_(\d+)__\x00/g, (_, idx) => protectedBlocks[Number(idx)]);
   }
 
+  // Safe CSS Minification Engine (protects strings and url(), preserves calc() + and - spaces, keyframe 0%)
   // Safe CSS Minification Engine (skips <script> blocks, protects strings and url(), preserves calc() + and - spaces)
   function minifyInlineCss(html) {
+    return html.replace(/<style([^>]*)>([\s\S]*?)<\/style>/gi, (match, attrs, css) => {
     const scriptBlocks = [];
     const maskedHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (match) => {
       const idx = scriptBlocks.length;
@@ -1244,16 +1257,20 @@
           continue;
         }
 
+        // Preserve strings "..." and '...'
         // Preserve strings "..." and '...' via token vault
         if (ch === '"' || ch === "'") {
           const q = ch;
+          cleaned += q;
           let str = q;
           i++;
           while (i < len) {
             const c = css[i];
+            cleaned += c;
             str += c;
             i++;
             if (c === '\\' && i < len) {
+              cleaned += css[i];
               str += css[i];
               i++;
             } else if (c === q) {
@@ -1266,10 +1283,14 @@
           continue;
         }
 
+        // Preserve url(...)
         // Preserve url(...) via token vault
         if (css.slice(i, i + 4).toLowerCase() === 'url(') {
+          cleaned += css.slice(i, i + 4);
           let urlStr = css.slice(i, i + 4);
           i += 4;
+          while (i < len && css[i] !== ')') {
+            cleaned += css[i];
           let inQuote = null;
           while (i < len) {
             const c = css[i];
@@ -1286,6 +1307,10 @@
               break;
             }
           }
+          if (i < len && css[i] === ')') {
+            cleaned += ')';
+            i++;
+          }
           const idx = cssTokens.length;
           cssTokens.push(urlStr);
           cleaned += `\x00__CSS_TOK_${idx}__\x00`;
@@ -1300,6 +1325,7 @@
         .replace(/\s+/g, ' ')
         .replace(/\s*([{};,])\s*/g, '$1')
         .replace(/;}/g, '}')
+        .trim();
         .trim()
         .replace(/\x00__CSS_TOK_(\d+)__\x00/g, (_, idx) => cssTokens[Number(idx)]);
 
@@ -1309,6 +1335,7 @@
     return minifiedHtml.replace(/\x00__CSS_SCRIPT_PROT_(\d+)__\x00/g, (_, idx) => scriptBlocks[Number(idx)]);
   }
 
+  // Safe JS Minification Engine (full character scanner: protects base64, URLs, regexes, strings, ASI)
   // Safe JS Minification Engine (full lexical scanner: protects base64, URLs, regexes after keywords/operators, strings, template expressions, ASI)
   const JS_REGEX_PRECEDING_KEYWORDS = new Set([
     'return', 'case', 'throw', 'else', 'do', 'typeof', 'void', 'delete', 'in', 'of', 'yield', 'await'
@@ -1335,6 +1362,7 @@
     let i = 0;
     const len = code.length;
 
+    while (i < len) {
     function scanTemplate() {
       result += '`';
       i++;
@@ -1383,6 +1411,7 @@
           i++;
         }
         result += '\n'; // Preserve newline for ASI
+        continue;
         return;
       }
 
@@ -1394,8 +1423,10 @@
           if (code[i] === '\n') hasNewline = true;
           i++;
         }
+        i += 2; // skip */
         if (i < len) i += 2; // skip */
         result += hasNewline ? '\n' : ' ';
+        continue;
         return;
       }
 
@@ -1414,6 +1445,7 @@
             break;
           }
         }
+        continue;
         return;
       }
 
@@ -1432,16 +1464,35 @@
             break;
           }
         }
+        continue;
         return;
       }
 
       // 5. Template literal string `...`
       if (ch === '`') {
+        result += ch;
+        i++;
+        while (i < len) {
+          const c = code[i];
+          result += c;
+          i++;
+          if (c === '\\' && i < len) {
+            result += code[i];
+            i++;
+          } else if (c === '`') {
+            break;
+          }
+        }
+        continue;
         scanTemplate();
         return;
       }
 
       // 6. Regex literal /.../
+      if (ch === '/') {
+        const prevNonWs = result.trimEnd().slice(-1);
+        const isRegex = !prevNonWs || /[=([,:!?&|;{}~^+\-*\/]/.test(prevNonWs);
+        if (isRegex) {
       if (ch === '/' && next !== '/' && next !== '*') {
         if (canStartRegexInJs(result)) {
           result += ch;
@@ -1468,6 +1519,7 @@
               break;
             }
           }
+          continue;
           return;
         }
       }
@@ -1488,6 +1540,8 @@
   }
 
   function minifyInlineJs(html) {
+    return html.replace(/<script([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, js) => {
+      if (/src\s*=/i.test(attrs)) return match;
     return html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, js) => {
       if (/\bsrc\s*=/i.test(attrs)) return match;
       const typeMatch = attrs.match(/\btype\s*=\s*(?:["']([^"']*)["']|([^\s>]+))/i);

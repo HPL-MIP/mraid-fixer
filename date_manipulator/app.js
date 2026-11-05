@@ -323,7 +323,8 @@ class DateManipulatorApp {
   }
 
   init() {
-    this.setupEventListeners();
+    this.setupDisplays();
+        this.setupEventListeners();
     this.syncInputsFromState();
     this.startLiveTicker();
 
@@ -482,7 +483,9 @@ class DateManipulatorApp {
     this.dom.reloadBtn.addEventListener('click', () => {
       this.state.startTimeReal = Date.now();
       const activeFile = this.files.find(f => f.id === this.activeFileId);
-      if (activeFile && activeFile.isDirectUrl) {
+      if (this.displayIds.length > 1) {
+          this.renderActiveFile();
+        } else if (activeFile && activeFile.isDirectUrl) {
         const currentSrc = this.dom.previewIframe.src;
         this.dom.previewIframe.src = 'about:blank';
         setTimeout(() => { this.dom.previewIframe.src = currentSrc; }, 50);
@@ -791,6 +794,10 @@ class DateManipulatorApp {
           return;
         }
         this.activeFileId = file.id;
+        if (this.displayIds.length > 1 && !this.displayIds.includes(file.id)) {
+          this.showAllDisplays = false;
+          this.displayIds[0] = file.id;
+        }
         this.renderFilesList();
         this.renderActiveFile();
       });
@@ -977,7 +984,153 @@ window.__SIMULATOR_CONFIG__ = {
   }
 
   // Render active file into iframe
+
+  // Multiple displays share the toolbar simulation settings.
+  setupDisplays() {
+    this.displayIds = [];
+    this.showAllDisplays = false;
+    this.displayGrid = document.createElement('div');
+    this.displayGrid.className = 'display-grid';
+    this.displayGrid.hidden = true;
+    this.dom.canvasWrapper.appendChild(this.displayGrid);
+    const controls = document.createElement('div');
+    controls.className = 'control-group display-controls';
+    const button = (label, action) => {
+      const el = document.createElement('button');
+      el.className = 'btn';
+      el.textContent = label;
+      el.type = 'button';
+      el.addEventListener('click', action);
+      controls.appendChild(el);
+      return el;
+    };
+    this.addDisplayButton = button('Add display', () => {
+      this.showAllDisplays = false;
+      if (!this.displayIds.length) this.displayIds = [this.activeFileId];
+      const next = this.files.find(f => !this.displayIds.includes(f.id));
+      if (next) this.displayIds.push(next.id);
+      this.renderActiveFile();
+    });
+    this.allDisplaysButton = button('Show all', () => {
+      this.showAllDisplays = true;
+      this.displayIds = this.files.map(f => f.id);
+      this.renderActiveFile();
+    });
+    this.singleDisplayButton = button('Single display', () => {
+      this.showAllDisplays = false;
+      this.displayIds = [];
+      this.renderActiveFile();
+    });
+    this.dom.deviceSelect.closest('.toolbar-row').appendChild(controls);
+  }
+
+  syncDisplays() {
+    if (this.showAllDisplays) this.displayIds = this.files.map(f => f.id);
+    this.displayIds = this.displayIds.filter(id => this.files.some(f => f.id === id));
+    this.addDisplayButton.disabled = this.files.length < 2 ||
+      this.displayIds.length >= this.files.length;
+    this.allDisplaysButton.disabled = this.files.length < 2;
+    const multiple = this.displayIds.length > 1;
+    this.singleDisplayButton.hidden = !multiple;
+    this.dom.canvasWrapper.classList.toggle('multiple-displays', multiple);
+    this.dom.deviceWrapper.style.display = multiple || !this.files.length ? 'none' : '';
+    this.displayGrid.hidden = !multiple;
+    this.displayGrid.replaceChildren();
+    if (!multiple) {
+      if (this.displayIds.length === 1) this.activeFileId = this.displayIds[0];
+      this.displayIds = [];
+      if (!this.files.length) {
+        this.dom.previewIframe.removeAttribute('srcdoc');
+        this.dom.previewIframe.src = 'about:blank';
+      }
+      this.applyDeviceDimensions();
+      return false;
+    }
+    this.dom.previewIframe.removeAttribute('srcdoc');
+    this.dom.previewIframe.src = 'about:blank';
+    this.dom.emptyState.style.display = 'none';
+    if (this.dom.activeFileName) {
+      this.dom.activeFileName.textContent = this.displayIds.length + ' displays';
+      this.dom.activeFileName.title = 'All displays share the toolbar settings';
+      this.dom.activeFilePill.style.display = 'inline-flex';
+    }
+    this.displayIds.forEach((id, index) => {
+      const file = this.files.find(f => f.id === id);
+      const card = document.createElement('section');
+      card.className = 'display-card';
+      const header = document.createElement('div');
+      header.className = 'display-card-header';
+      const select = document.createElement('select');
+      select.className = 'select-control';
+      select.setAttribute('aria-label', 'File for display ' + (index + 1));
+      this.files.forEach(f => select.add(new Option(f.name, f.id)));
+      select.value = id;
+      select.title = file.name;
+      select.addEventListener('change', () => {
+        this.showAllDisplays = false;
+        this.displayIds[index] = select.value;
+        this.renderActiveFile();
+      });
+      const remove = document.createElement('button');
+      remove.className = 'btn';
+      remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', 'Remove display ' + (index + 1));
+      remove.addEventListener('click', () => {
+        this.showAllDisplays = false;
+        this.displayIds.splice(index, 1);
+        if (this.displayIds.length === 1) this.activeFileId = this.displayIds[0];
+        this.renderFilesList();
+        this.renderActiveFile();
+      });
+      header.append(select, remove);
+      const viewport = document.createElement('div');
+      viewport.className = 'display-viewport';
+      const frame = this.dom.deviceFrame.cloneNode(true);
+      frame.removeAttribute('id');
+      frame.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+      const iframe = frame.querySelector('iframe');
+      iframe.title = file.name;
+      iframe.removeAttribute('src');
+      iframe.removeAttribute('srcdoc');
+      viewport.appendChild(frame);
+      card.append(header, viewport);
+      this.displayGrid.appendChild(card);
+      if (file.isDirectUrl) iframe.src = file.fullUrl;
+      else iframe.srcdoc = this.buildInjectedHtml(file.rawHtml);
+    });
+    this.layoutDisplays();
+    this.updateStatusDisplay();
+    return true;
+  }
+
+  layoutDisplays() {
+    const cfg = DEVICE_CONFIGS[this.state.device] || DEVICE_CONFIGS.iphone16;
+    const landscape = this.state.orientation === 'landscape';
+    const width = landscape ? cfg.height : cfg.width;
+    const height = landscape ? cfg.width : cfg.height;
+    this.displayGrid.querySelectorAll('.display-card').forEach(card => {
+      const viewport = card.querySelector('.display-viewport');
+      const frame = card.querySelector('.device-frame');
+      const availableWidth = Math.max(100, card.clientWidth - 24);
+      const availableHeight = Math.max(240, this.dom.canvasWrapper.clientHeight - 110);
+      const scale = this.state.zoom === 'fit'
+        ? Math.min(1, availableWidth / width, availableHeight / height)
+        : parseFloat(this.state.zoom) || 1;
+      frame.className = 'device-frame ' + cfg.type + '-style ' + (landscape ? 'landscape' : 'portrait');
+      Object.assign(frame.style, {
+        width: width + 'px', height: height + 'px',
+        minWidth: '0', minHeight: '0', borderRadius: cfg.borderRadius,
+        transform: 'scale(' + scale + ')', transformOrigin: 'top left'
+      });
+      frame.querySelector('.device-screen-container').style.borderRadius = cfg.screenRadius;
+      frame.querySelector('.dynamic-island').style.display = cfg.hasIsland && !landscape ? 'flex' : 'none';
+      viewport.style.width = width * scale + 'px';
+      viewport.style.height = height * scale + 'px';
+    });
+  }
+
   renderActiveFile() {
+    if (this.syncDisplays()) return;
     const activeFile = this.files.find(f => f.id === this.activeFileId);
     if (!activeFile) {
       this.dom.emptyState.style.display = 'flex';
@@ -1028,6 +1181,7 @@ window.__SIMULATOR_CONFIG__ = {
 
   // Apply device dimensions and responsive zoom
   applyDeviceDimensions() {
+    if (this.displayIds && this.displayIds.length > 1) { this.layoutDisplays(); return; }
     const cfg = DEVICE_CONFIGS[this.state.device] || DEVICE_CONFIGS.iphone16;
     const isLandscape = this.state.orientation === 'landscape';
 

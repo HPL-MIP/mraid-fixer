@@ -1047,3 +1047,18 @@ body {
     gap: 8px;
   }
 }
+
+
+/* Multi-file preview workspace */
+.display-controls { flex-wrap: wrap; }
+.display-grid[hidden] { display: none; }
+.preview-canvas-wrapper.multiple-displays { display: block; min-height: 0; }
+.display-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; width: 100%; }
+.display-card { min-width: 0; overflow: auto; padding: 12px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); }
+.display-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.display-card-header select { flex: 1; min-width: 0; width: 0; text-overflow: ellipsis; }
+.display-viewport { position: relative; margin: 0 auto; }
+.display-viewport .device-frame { position: absolute; top: 0; left: 0; transition: none; }
+.display-controls button:disabled { opacity: .45; cursor: default; }
+
+.display-controls [hidden] { display: none; }

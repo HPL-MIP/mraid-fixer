@@ -1522,6 +1522,7 @@
          parser does not see closing script tag and close our block early.
       ============================================================== */
       function runFix(entry) {
+        var html = entry.origHTML, results = [], diffs = [];
         var rawOrigHTML = entry.origHTML, results = [], diffs = [];
         function diff(lbl, before, after) { diffs.push({ label: lbl, before: before, after: after }); }
 
@@ -1754,19 +1755,27 @@
 
         /* CHECK 1 - Bridge Declaration */
         (function () {
+          var ABS_RE = /<script[^>]+src=["'][^"']*(?:https?:|\/\/)[^"']*mraid[^"']*\.js["'][^>]*>\s*<\/[s]cript>/gi;
           var ABS_RE = /<script\b[^>]*\bsrc=["'][^"']*(?:https?:|\/\/)[^"']*\/mraid(?:\.min)?\.js(?:[?#][^"']*)?["'][^>]*>\s*<\/[s]cript>/gi;
           var absM = html.match(ABS_RE) || [];
           if (absM.length) {
+            html = html.replace(ABS_RE, '\x3cscript src="mraid.js">\x3c/script>');
             html = html.replace(ABS_RE, function () { return '\x3cscript src="mraid.js">\x3c/script>'; });
             diff('Bridge: Absolute URL \u2192 relative', absM[0], '\x3cscript src="mraid.js">\x3c/script>');
           }
+          var REL_RE = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/gi;
           var REL_RE = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/gi;
           var relM = html.match(REL_RE) || [];
           if (relM.length > 1) {
+            var cnt = 0; html = html.replace(REL_RE, function (m) { cnt++; return cnt === 1 ? m : ''; });
             var cnt = 0;
             html = html.replace(REL_RE, function (m) { cnt++; return cnt === 1 ? m : ''; });
             diff('Bridge: Removed duplicate mraid.js tags', relM.length + ' instances', 'Kept exactly 1');
           }
+          var BODY_RE = /(<body[^>]*>[\s\S]*?)(<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>)([\s\S]*?<\/body>)/i;
+          if (BODY_RE.test(html)) {
+            html = html.replace(BODY_RE, function (_, pre, tag, post) { return pre + post; });
+            html = html.replace(/(<head[^>]*>)/i, '$1\n  \x3cscript src="mraid.js">\x3c/script>');
           var headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i);
           var inHead = headMatch ? REL_RE.test(headMatch[1]) : false;
           REL_RE.lastIndex = 0;
@@ -1781,9 +1790,12 @@
             diff('Bridge: Moved mraid.js from body to head', 'In body', 'In head');
             inHead = true;
           }
+          var ANY_RE = /<script[^>]+src=["'][^"']*mraid[^"']*\.js["'][^>]*>/i;
 
           var ANY_RE = /<script\b[^>]*\bsrc=["'](?:[^"']*\/)?mraid(?:\.min)?\.js(?:[?#][^"']*)?["'][^>]*>/i;
           if (!ANY_RE.test(html)) {
+            if (/<head[^>]*>/i.test(html)) { html = html.replace(/(<head[^>]*>)/i, '$1\n  \x3cscript src="mraid.js">\x3c/script>'); }
+            else { html = '\x3chead>\n  \x3cscript src="mraid.js">\x3c/script>\n\x3c/head>\n' + html; }
             if (/<head\b[^>]*>/i.test(html)) {
               html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n  \x3cscript src="mraid.js">\x3c/script>'; });
             } else {
@@ -1793,7 +1805,10 @@
             results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'mraid.js was missing and has been injected into head.', status: 'fixed' });
             return;
           }
+          var hc = (html.match(/<head[^>]*>([\s\S]*?)<\/head>/i) || [])[1] || '';
+          var inH = /<script[^>]+src=["']mraid\.js["'][^>]*>/i.test(hc);
           if (absM.length) { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'Fixed: absolute URL replaced with relative src="mraid.js".', status: 'fixed' }); }
+          else if (inH) { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'script src="mraid.js" correctly declared once in head.', status: 'pass' }); }
           else if (inHead) { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'script src="mraid.js" correctly declared once in head.', status: 'pass' }); }
           else { results.push({ id: 'bridge', title: 'MRAID Bridge Declaration', desc: 'mraid.js was outside head \u2014 moved it inside.', status: 'fixed' }); }
         }());
@@ -1834,8 +1849,10 @@
             '\x3c/script>'
           ].join('\n');
           if (!hasUsable && !hasInit) {
+            var INJ_RE = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
             var INJ_RE = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
             if (INJ_RE.test(html)) { html = html.replace(INJ_RE, function (m) { return m + '\n' + GUARD; }); }
+            else { html = html.replace(/(<\/head>)/i, GUARD + '\n$1'); }
             else { html = html.replace(/<\/head>/i, function (m) { return GUARD + '\n' + m; }); }
             diff('Readiness Guards: Injected isMraidUsable + initializeWhenMraidReady', '(missing)', 'Full MRAID readiness block added');
             results.push({ id: 'readiness', title: 'Readiness Guards', desc: 'Injected isMraidUsable() and initializeWhenMraidReady() lifecycle helpers.', status: 'fixed' });
@@ -1883,9 +1900,12 @@
             '\x3c/script>'
           ].join('\n');
 
+          var INJ_POINT = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
           var INJ_POINT = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
           if (INJ_POINT.test(html)) {
             html = html.replace(INJ_POINT, function (m) { return m + '\n' + STATE_GUARD; });
+          } else if (/<head[^>]*>/i.test(html)) {
+            html = html.replace(/(<head[^>]*>)/i, '$1\n' + STATE_GUARD);
           } else if (/<head\b[^>]*>/i.test(html)) {
             html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n' + STATE_GUARD; });
           } else {
@@ -1911,8 +1931,21 @@
           }
         }());
 
+        /* CHECK 4 - window.open() Replacement */
         /* CHECK 4 - window.open() Replacement (Balanced parenthesis-aware, code-only) */
         (function () {
+          var WO_RE = /\bwindow(?:\.open|\[["']open["']\])\s*\(([^)]*)\)/gi;
+          var woMatches = html.match(WO_RE) || [];
+          if (woMatches.length) {
+            var count = 0;
+            html = html.replace(WO_RE, function (match, args) {
+              count++;
+              args = (args || '').trim();
+              if (!args) return 'handleMraidOpen()';
+              var firstArgMatch = args.match(/^\s*(?:(["'`])(?:\\.|(?!\1)[^\\])*\1|[^,]+)/);
+              var firstArg = firstArgMatch ? firstArgMatch[0].trim() : args.split(',')[0].trim();
+              if (firstArg === '""' || firstArg === "''" || firstArg === '"about:blank"' || firstArg === "'about:blank'") {
+                return 'handleMraidOpen()';
           var count = 0;
 
           function replaceWindowOpenInJs(jsCode) {
@@ -1939,6 +1972,8 @@
                   return tokenRanges[r].type === 'code';
                 }
               }
+              return 'handleMraidOpen(' + firstArg + ')';
+            });
               return false;
             }
 
@@ -2022,6 +2057,9 @@
             while (html.indexOf(replacement) !== -1) replacement += '_';
             var idRe = new RegExp('\\b' + name + '\\b', 'g');
             function renameCode(code) {
+              return code.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\/\/[^\n]*|\/\*[\s\S]*?\*\/)|\b[A-Za-z_$][\w$]*\b/g, function (token, literal) {
+                return !literal && token === name ? replacement : token;
+              });
               var tokens = tokenizeJs(code);
               for (var i = 0; i < tokens.length; i++) {
                 if (tokens[i].type === 'code') {
@@ -2030,10 +2068,20 @@
               }
               return tokens.map(function (t) { return t.text; }).join('');
             }
+            html = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (_, start, code, end) {
+              return start + renameCode(code) + end;
+            });
+            html = html.replace(/(\bon\w+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, attr, quote, code) {
+              return attr + quote + renameCode(code) + quote;
+            });
+            renamed.push(name + ' ? ' + replacement);
             html = transformAllJsInHtml(html, renameCode);
             renamed.push(name + ' \u2192 ' + replacement);
           });
           if (renamed.length) diff('Renamed callbacks reserved for click URLs', renamed.join(', '), 'Distinct creative callback names');
+          html = html.replace(/\bvar\s+mraid\s*=\s*window\.mraid\s*;/g, '');
+          // Route existing calls through the same guard, including empty-string calls.
+          html = html.replace(/\b(?:window\.)?mraid\.open\s*\(/g, 'window.openMraidDestination(');
 
           // Route existing mraid.open calls in JS code through window.openMraidDestination (preserving local var mraid declarations so if(mraid) never throws ReferenceError)
           html = transformAllJsInHtml(html, function (code) {
@@ -2069,9 +2117,12 @@
             '})();',
             '\x3c/script>'
           ].join('\n');
+          var INJ_POINT = /<script[^>]+src=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
           var INJ_POINT = /<script\b[^>]*\bsrc=["']mraid\.js["'][^>]*>\s*<\/[s]cript>/i;
           if (INJ_POINT.test(html)) {
             html = html.replace(INJ_POINT, function (m) { return m + '\n' + CLICK_ENGINE; });
+          } else if (/<head[^>]*>/i.test(html)) {
+            html = html.replace(/(<head[^>]*>)/i, '$1\n' + CLICK_ENGINE);
           } else if (/<head\b[^>]*>/i.test(html)) {
             html = html.replace(/<head\b[^>]*>/i, function (m) { return m + '\n' + CLICK_ENGINE; });
           } else {
@@ -2085,13 +2136,57 @@
         (function () {
           var detected = [];
           var RESERVED_PATTERN = /\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/g;
+          var rawMatches = html.match(RESERVED_PATTERN);
+          if (rawMatches) {
+            rawMatches.forEach(function (m) {
+              if (detected.indexOf(m) === -1) detected.push(m);
+            });
+          }
+
           var fixCount = 0;
 
+          // 1. Clean up fallback chains containing clickTag and reserved identifiers
           var reTrailingFallback = /\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi;
-          var reLeadingFallback = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b\s*\|\|\s*(?=(?:window\.)?clickTag\b)/gi;
-          var reOrphanChain = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b(?:\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b)+/gi;
-          var reBracket = /\bwindow\s*\[\s*(["'])(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\1\s*\]/gi;
+          if (reTrailingFallback.test(html)) {
+            html = html.replace(reTrailingFallback, function () {
+              fixCount++;
+              return '';
+            });
+          }
 
+          var reLeadingFallback = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b\s*\|\|\s*(?=(?:window\.)?clickTag\b)/gi;
+          if (reLeadingFallback.test(html)) {
+            html = html.replace(reLeadingFallback, function () {
+              fixCount++;
+              return '';
+            });
+          }
+
+          var reOrphanChain = /\b(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b(?:\s*\|\|\s*(?:window\.)?(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b)+/gi;
+          if (reOrphanChain.test(html)) {
+            html = html.replace(reOrphanChain, function () {
+              fixCount++;
+              return 'window.clickTag';
+            });
+          }
+
+          // 2. Bracket notation window["clickTag1"] / window['clickthrough']
+          var reBracket = /\bwindow\s*\[\s*(["'])(?:clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\1\s*\]/gi;
+          if (reBracket.test(html)) {
+            html = html.replace(reBracket, function () {
+              fixCount++;
+              return 'window.clickTag';
+            });
+          }
+
+          // 3. Rename any remaining identifier occurrences in <script> and inline event handlers
+          function renameReservedTokens(code) {
+            return code.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\/\/[^\n]*|\/\*[\s\S]*?\*\/)|\b(clickTag\d+|clicktag\d+|clickthrough|clickThrough|click_through)\b/gi, function (token, literal, ident) {
+              if (literal) {
+                if (literal.indexOf('//') === 0 || literal.indexOf('/*') === 0) {
+                  return literal
+                    .replace(/\bclickTag(\d+)\b/gi, function (_, n) { fixCount++; return 'creativeExitUrl' + n; })
+                    .replace(/\b(?:clickthrough|clickThrough|click_through)\b/gi, function () { fixCount++; return 'click target'; });
           function cleanReservedInJs(code) {
             var rawMatches = code.match(RESERVED_PATTERN);
             if (rawMatches) {
@@ -2116,6 +2211,7 @@
                 if (reTrailingFallback.test(txt)) {
                   txt = txt.replace(reTrailingFallback, function () { fixCount++; return ''; });
                 }
+                return token;
                 if (reLeadingFallback.test(txt)) {
                   txt = txt.replace(reLeadingFallback, function () { fixCount++; return ''; });
                 }
@@ -2137,10 +2233,25 @@
                   .replace(/\bclickTag(\d+)\b/gi, function (_, n) { fixCount++; return 'creativeExitUrl' + n; })
                   .replace(/\b(?:clickthrough|clickThrough|click_through)\b/gi, function () { fixCount++; return 'click target'; });
               }
+              if (!ident) return token;
+              fixCount++;
+              var lower = ident.toLowerCase();
+              if (/^clicktag\d+$/i.test(lower)) {
+                var num = lower.replace(/^clicktag/, '');
+                return 'creativeExitUrl' + num;
+              }
+              return 'creativeExitUrl';
+            });
             }
             return tokens.map(function (t) { return t.text; }).join('');
           }
 
+          html = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/[s]cript>)/gi, function (_, start, code, end) {
+            return start + renameReservedTokens(code) + end;
+          });
+          html = html.replace(/(\bon\w+\s*=\s*)(["'])([\s\S]*?)\2/gi, function (_, attr, quote, code) {
+            return attr + quote + renameReservedTokens(code) + quote;
+          });
           html = transformAllJsInHtml(html, cleanReservedInJs);
 
           if (detected.length || fixCount > 0) {
@@ -2164,6 +2275,8 @@
 
         /* CHECK 7 - Media Viewability */
         (function () {
+          var hasVideo = /<video/i.test(html), hasAudio = /<audio|new\s+Audio/i.test(html),
+            hasIV = /(?:window\.)?(?:mraid|m)\.isViewable\s*\(\s*\)/i.test(html), hasVC = /viewableChange/i.test(html),
           var hasVideo = /<video\b|createElement\s*\(\s*["']video["']\s*\)/i.test(html),
             hasAudio = /<audio\b|new\s+Audio\b/i.test(html),
             hasIV = /(?:window\.)?(?:mraid|m)\.isViewable\s*\(\s*\)/i.test(html),
@@ -2188,11 +2301,15 @@
             '  var p=[];',
             '  function sync(v){',
             '    var all=Array.prototype.slice.call(document.querySelectorAll("video,audio"));',
+            '    if(!v){all.forEach(function(el){if(!el.paused){p.push(el);el.pause();}});}',
+            '    else{p.forEach(function(el){el.play().catch(function(){});});p=[];}',
             '    if(v===false){all.forEach(function(el){if(!el.paused){if(p.indexOf(el)===-1)p.push(el);el.pause();}});}',
             '    else if(v===true){p.forEach(function(el){el.play().catch(function(){});});p=[];}',
             '  }',
+            '  function setup(){',
             '  function bind(){',
             '    var m=window.mraid;if(!m)return;',
+            '    if(typeof mraid.isViewable==="function"){try{sync(mraid.isViewable());}catch(e){}}',
             '    if(typeof mraid.isViewable==="function"){try{var iv=mraid.isViewable();if(iv===false)sync(false);}catch(e){}}',
             '    if(typeof mraid.addEventListener==="function"){try{mraid.addEventListener("viewableChange",sync);}catch(e){}}',
             '  }',
@@ -2207,6 +2324,8 @@
             '\x3c/script>'
           ].join('\n');
 
+          if (/(<\/body>)/i.test(html)) {
+            html = html.replace(/(<\/body>)/i, VB + '\n$1');
           if (/<\/body>/i.test(html)) {
             html = html.replace(/<\/body>/i, function (m) { return VB + '\n' + m; });
           } else {
@@ -2241,9 +2360,24 @@
           else { results.push({ id: 'tap', title: 'iOS Tap Deduplication', desc: 'No custom touch handling found. Not applicable.', status: 'pass' }); }
         }());
 
+        /* CHECK 9 - External Navigation & Redirect Elimination */
         /* CHECK 9 - External Navigation & Redirect Elimination (Token-aware, never strips // inside URLs or swallows surrounding components) */
         (function () {
           var fixCount = 0;
+          var LOC_ASSIGN_RE = /\b(?:window\.|top\.|parent\.)?location\.(?:assign|replace)\s*\(\s*([^)]*)\s*\)/gi;
+          if (LOC_ASSIGN_RE.test(html)) {
+            html = html.replace(LOC_ASSIGN_RE, function (m, arg) {
+              fixCount++;
+              arg = (arg || '').trim();
+              return arg ? 'handleMraidOpen(' + arg + ')' : 'handleMraidOpen()';
+            });
+          }
+          var LOC_HREF_RE = /(?:(?:\b(?:window|top|parent)\.location(?:\.href)?)|(?:\blocation\.href))\s*=(?![=>])\s*([^;\n\r\}]+)/gi;
+          if (LOC_HREF_RE.test(html)) {
+            html = html.replace(LOC_HREF_RE, function (m, arg) {
+              var rhs = (arg || '').trim();
+              if (!rhs || rhs.startsWith('"#') || rhs.startsWith("'#") || rhs.startsWith('`#') || rhs.indexOf('location.hash') !== -1) {
+                return m;
 
           function replaceLocationNavigationInJs(jsCode) {
             if (!/\blocation\b/.test(jsCode)) return jsCode;
@@ -2259,6 +2393,8 @@
               for (var r = 0; r < tokenRanges.length; r++) {
                 if (offset >= tokenRanges[r].start && offset < tokenRanges[r].end) return tokenRanges[r];
               }
+              // Strip any trailing inline comments
+              rhs = rhs.replace(/\/\*.*?\*\/|\/\/.*$/g, '').trim();
               return null;
             }
 
@@ -2358,6 +2494,8 @@
                 continue;
               }
               fixCount++;
+              return 'handleMraidOpen(' + rhs + ')';
+            });
               out += jsCode.slice(idx, m.index) + 'handleMraidOpen(' + rhs + ')';
               idx = p2;
               hrefRe.lastIndex = idx;
