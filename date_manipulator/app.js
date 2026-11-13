@@ -1105,6 +1105,7 @@ window.__SIMULATOR_CONFIG__ = {
     };
     const found = new Set();
     const referencedLanguages = new Set();
+    const imageLanguages = new Set();
     const add = value => { const locale = normalize(value); if (locale) found.add(locale); };
     const doc = new DOMParser().parseFromString(file.rawHtml || '', 'text/html');
     const sources = [];
@@ -1120,6 +1121,19 @@ window.__SIMULATOR_CONFIG__ = {
       }
     }
     for (const source of sources) {
+      // Prefer explicit localized image variants over bundled date-library locales.
+      for (const match of source.matchAll(/\b(?:const|let|var)\s+images\s*=\s*(\{[\s\S]*?\})\s*;/g)) {
+        try {
+          const entries = Object.entries(JSON.parse(match[1]));
+          // Legacy Finnish assets use "fl"; browsers use "fi".
+          const locales = entries.map(([key]) => normalize(key.toLowerCase() === 'fl' ? 'fi' : key));
+          if (entries.length > 1 && locales.every(Boolean) &&
+              entries.every(([, assets]) => assets && typeof assets === 'object' &&
+                !Array.isArray(assets) && Object.values(assets).some(value => typeof value === 'string' && /^data:image\//i.test(value)))) {
+            locales.forEach(locale => imageLanguages.add(locale));
+          }
+        } catch (_) { /* Non-JSON maps use the other detection patterns. */ }
+      }
       // Bundlers extract translations into variables: {en:packA,fr:packB}.
       // Require the whole map to contain language keys and identifier references,
       // with at least two languages; isolated framework properties are not evidence.
@@ -1167,9 +1181,9 @@ window.__SIMULATOR_CONFIG__ = {
     }
     // Complete translation maps outrank incidental language-like strings in
     // bundled libraries (React's composition-event locale, HTML 'as', etc.).
-    if (referencedLanguages.size > 1) {
+    if (imageLanguages.size > 1 || referencedLanguages.size > 1) {
       found.clear();
-      referencedLanguages.forEach(add);
+      (imageLanguages.size > 1 ? imageLanguages : referencedLanguages).forEach(add);
     }
     // The document default is a fallback, not an extra translation.
     if (!found.size) add(doc.documentElement.lang);
