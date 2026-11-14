@@ -1180,14 +1180,18 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, w, h);
 
-          // For JPEG, compress with quality 0.85; for PNG, keep as PNG without lossy artifacts
-          const isPng = mime.toLowerCase().includes('png');
-          const targetMime = isPng ? 'image/png' : 'image/jpeg';
+          // Preserve alpha-capable formats (PNG, WebP) so transparent images never get flattened onto a black JPEG background
+          const lowerMime = mime.toLowerCase();
+          const isPng = lowerMime.includes('png');
+          const isWebp = lowerMime.includes('webp');
+          const targetMime = isPng ? 'image/png' : (isWebp ? 'image/webp' : 'image/jpeg');
           const quality = isPng ? 0.92 : 0.85;
           const dataUrl = canvas.toDataURL(targetMime, quality);
           const comma = dataUrl.indexOf(',');
           const outB64 = comma > -1 ? dataUrl.substring(comma + 1) : b64;
-          resolve({ b64: outB64, mime: isPng ? 'png' : 'jpeg' });
+          const mimeMatch = dataUrl.match(/^data:image\/([^;]+);base64,/i);
+          const outMime = mimeMatch ? mimeMatch[1].toLowerCase() : (isPng ? 'png' : (isWebp ? 'webp' : 'jpeg'));
+          resolve({ b64: outB64, mime: outMime });
         } catch (e) {
           resolve({ b64: b64, mime: mime });
         }
