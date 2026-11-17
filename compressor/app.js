@@ -115,6 +115,11 @@
   const btnDownloadZipMain = document.getElementById('btnDownloadZipMain');
   const topQueueCount = document.getElementById('topQueueCount');
   const toastBox = document.getElementById('toastBox');
+  const configAdvisorBanner = document.getElementById('configAdvisorBanner');
+  const advisorBadge = document.getElementById('advisorBadge');
+  const advisorReason = document.getElementById('advisorReason');
+  const advisorPills = document.getElementById('advisorPills');
+  const btnApplyRecommended = document.getElementById('btnApplyRecommended');
 
   // Sliders & Controls
   const sliderBitrate = document.getElementById('sliderBitrate');
@@ -574,6 +579,232 @@
     });
   }
 
+  // Smart Config Detector: Recommends optimal compression settings to fit under targetMb (e.g. 3.4 MB)
+  let currentRecommendation = null;
+
+  function detectBestConfig(files, targetMb = state.dspLimitMb) {
+    if (!files || files.length === 0) return null;
+
+    const targetBytes = targetMb * 1024 * 1024;
+    // Analyze worst-case (largest) file so all queued files can meet the target limit
+    let largest = files[0];
+    let totalDupSaved = 0;
+
+    files.forEach(f => {
+      if (f.originalSize > largest.originalSize) largest = f;
+    });
+
+    const seenVideoB64 = new Set();
+    let videoBytes = 0;
+    let uniqueVideoBytes = 0;
+    largest.assets.videos.forEach(v => {
+      videoBytes += v.size;
+      if (!seenVideoB64.has(v.b64)) {
+        seenVideoB64.add(v.b64);
+        uniqueVideoBytes += v.size;
+      } else {
+        totalDupSaved += v.size;
+      }
+    });
+
+    const imageBytes = largest.assets.images.reduce((acc, img) => acc + img.size, 0);
+    const codeBytes = largest.assets.htmlChars + largest.assets.cssChars + largest.assets.jsChars;
+    const hasVideo = largest.assets.videos.length > 0;
+    const hasImages = largest.assets.images.length > 0;
+    const hasDuplicates = totalDupSaved > 0;
+
+    // Base64 encoding adds ~33% overhead in HTML
+    const videoHtmlBytes = Math.round(uniqueVideoBytes * 1.333);
+    const imageHtmlBytes = Math.round(imageBytes * 1.333);
+    const estOtherBytes = Math.round(imageHtmlBytes * 0.72 + codeBytes * 0.78);
+
+    const rec = {
+      targetMb,
+      largestName: largest.name,
+      largestSize: largest.originalSize,
+      hasVideo,
+      hasImages,
+      hasDuplicates,
+      dupSavedBytes: Math.round(totalDupSaved * 1.333),
+      crf: 26,
+      bitrateKbps: 800,
+      scale: 1.0,
+      transcodeVideo: hasVideo,
+      stripAudio: true,
+      deduplicateVideo: true,
+      minifyHtml: true,
+      minifyCss: true,
+      minifyJs: true,
+      compressImages: hasImages || state.compressImages,
+      tier: 'balanced',
+      badgeText: 'Balanced',
+      reason: ''
+    };
+
+    if (largest.originalSize <= targetBytes) {
+      rec.crf = 24;
+      rec.bitrateKbps = 1200;
+      rec.scale = 1.0;
+      rec.tier = 'ok';
+      rec.badgeText = `Under ${targetMb.toFixed(1)} MB`;
+      rec.reason = `${escapeHtml(largest.name)} (${formatBytes(largest.originalSize)}) is already under ${targetMb.toFixed(1)} MB. Use CRF 24 (near-lossless) to preserve max quality while trimming extra bytes.`;
+    } else if (hasVideo) {
+      const videoBudget = Math.max(250 * 1024, targetBytes - estOtherBytes);
+      const neededRatio = videoHtmlBytes > 0 ? (videoBudget / videoHtmlBytes) : 1;
+
+      if (neededRatio >= 0.55) {
+        rec.crf = 26;
+        rec.bitrateKbps = 800;
+        rec.scale = 1.0;
+        rec.tier = 'balanced';
+        rec.badgeText = 'CRF 26 • Optimal';
+        rec.reason = `Moderate reduction needed for ${escapeHtml(largest.name)} (${formatBytes(largest.originalSize)}). CRF 26 @ 800 kbps at 100% scale keeps video sharp under ${targetMb.toFixed(1)} MB.`;
+      } else if (neededRatio >= 0.32) {
+        rec.crf = 28;
+        rec.bitrateKbps = 550;
+        rec.scale = 0.85;
+        rec.tier = 'warn';
+        rec.badgeText = 'Strong Shrink';
+        rec.reason = `Significant video payload (${formatBytes(videoBytes)}). CRF 28 @ 550 kbps with 85% scale + audio strip is recommended to fit under ${targetMb.toFixed(1)} MB.`;
+      } else {
+        rec.crf = 28;
+        rec.bitrateKbps = neededRatio < 0.2 ? 350 : 480;
+        rec.scale = 0.75;
+        rec.tier = 'warn';
+        rec.badgeText = 'Max Shrink';
+        rec.reason = `Heavy video payload (${formatBytes(videoBytes)}). Aggressive CRF 28 @ ${rec.bitrateKbps} kbps with 75% downscale + audio strip is recommended to target < ${targetMb.toFixed(1)} MB.`;
+      }
+
+      if (hasDuplicates) {
+        rec.reason += ` Duplicate videos detected (~${formatBytes(rec.dupSavedBytes)} saved via MD5 dedup).`;
+      }
+    } else {
+      rec.transcodeVideo = false;
+      rec.crf = state.crf;
+      rec.bitrateKbps = state.bitrateKbps;
+      rec.scale = state.scale;
+      rec.compressImages = true;
+      rec.tier = imageBytes > targetBytes * 0.8 ? 'warn' : 'balanced';
+      rec.badgeText = 'Image / Code Mode';
+      if (imageBytes >= codeBytes) {
+        rec.reason = `No embedded video found — image-heavy HTML (${formatBytes(imageBytes)} images). Enable Base64 Image Recompression + HTML/CSS/JS minification.`;
+      } else {
+        rec.reason = `No embedded video found — code-heavy HTML (${formatBytes(codeBytes)} markup/CSS/JS). Enable HTML/CSS/JS minification + image recompression.`;
+      }
+    }
+
+    return rec;
+  }
+
+  function isRecommendationApplied(rec) {
+    if (!rec) return false;
+    const videoMatch = !rec.hasVideo || (
+      state.crf === rec.crf &&
+      state.bitrateKbps === rec.bitrateKbps &&
+      Math.abs(state.scale - rec.scale) < 0.01 &&
+      state.transcodeVideo === rec.transcodeVideo &&
+      state.stripAudio === rec.stripAudio &&
+      state.deduplicateVideo === rec.deduplicateVideo
+    );
+    return videoMatch &&
+      state.minifyHtml === rec.minifyHtml &&
+      state.minifyCss === rec.minifyCss &&
+      state.minifyJs === rec.minifyJs &&
+      state.compressImages === rec.compressImages;
+  }
+
+  function applyConfigRecommendation(rec) {
+    if (!rec) return;
+    if (rec.hasVideo) {
+      state.crf = rec.crf;
+      state.bitrateKbps = rec.bitrateKbps;
+      state.scale = rec.scale;
+      state.transcodeVideo = rec.transcodeVideo;
+      state.stripAudio = rec.stripAudio;
+      state.deduplicateVideo = rec.deduplicateVideo;
+
+      document.querySelectorAll('#crfPresetGroup .pill-opt').forEach(p => {
+        p.classList.toggle('active', parseInt(p.getAttribute('data-crf'), 10) === rec.crf);
+      });
+      if (sliderBitrate) sliderBitrate.value = rec.bitrateKbps;
+      if (bitrateDisplay) bitrateDisplay.textContent = rec.bitrateKbps + ' kbps';
+
+      document.querySelectorAll('#scalePresetGroup .pill-opt').forEach(p => {
+        p.classList.toggle('active', Math.abs(parseFloat(p.getAttribute('data-scale')) - rec.scale) < 0.01);
+      });
+      if (chkTranscodeVideo) chkTranscodeVideo.checked = rec.transcodeVideo;
+      if (chkStripAudio) chkStripAudio.checked = rec.stripAudio;
+      if (chkDeduplicateVideo) chkDeduplicateVideo.checked = rec.deduplicateVideo;
+    }
+
+    state.minifyHtml = rec.minifyHtml;
+    state.minifyCss = rec.minifyCss;
+    state.minifyJs = rec.minifyJs;
+    state.compressImages = rec.compressImages;
+
+    if (chkMinifyHtml) chkMinifyHtml.checked = rec.minifyHtml;
+    if (chkMinifyCss) chkMinifyCss.checked = rec.minifyCss;
+    if (chkMinifyJs) chkMinifyJs.checked = rec.minifyJs;
+    if (chkCompressImages) chkCompressImages.checked = rec.compressImages;
+
+    onSettingsChanged();
+    showToast(`✨ Applied recommended settings for < ${rec.targetMb.toFixed(1)} MB target`);
+  }
+
+  function renderConfigAdvisor() {
+    if (!configAdvisorBanner) return;
+    if (state.files.length === 0) {
+      configAdvisorBanner.classList.remove('visible', 'advisor-ok', 'advisor-warn');
+      currentRecommendation = null;
+      return;
+    }
+
+    const rec = detectBestConfig(state.files, state.dspLimitMb);
+    currentRecommendation = rec;
+    if (!rec) return;
+
+    configAdvisorBanner.classList.add('visible');
+    configAdvisorBanner.classList.remove('advisor-ok', 'advisor-warn');
+    if (rec.tier === 'ok') configAdvisorBanner.classList.add('advisor-ok');
+    if (rec.tier === 'warn') configAdvisorBanner.classList.add('advisor-warn');
+
+    if (advisorBadge) {
+      advisorBadge.textContent = rec.badgeText;
+      advisorBadge.className = `advisor-badge ${rec.tier === 'ok' ? 'ok' : (rec.tier === 'warn' ? 'warn' : '')}`;
+    }
+    if (advisorReason) {
+      advisorReason.innerHTML = rec.reason;
+    }
+    if (advisorPills) {
+      const pills = [];
+      if (rec.hasVideo) {
+        pills.push(`CRF ${rec.crf}`);
+        pills.push(`${rec.bitrateKbps} kbps`);
+        pills.push(`Scale ${Math.round(rec.scale * 100)}%`);
+        if (rec.stripAudio) pills.push('Mute Audio');
+        if (rec.hasDuplicates) pills.push('MD5 Dedup');
+      }
+      if (rec.compressImages) pills.push('Compress Images');
+      pills.push('Minify HTML/CSS/JS');
+      advisorPills.innerHTML = pills.map(p => `<span class="advisor-pill">${p}</span>`).join('');
+    }
+
+    if (btnApplyRecommended) {
+      const applied = isRecommendationApplied(rec);
+      btnApplyRecommended.disabled = applied;
+      btnApplyRecommended.textContent = applied ? '✓ Recommended Applied' : '✨ Apply Recommended';
+      btnApplyRecommended.style.opacity = applied ? '0.65' : '1';
+    }
+  }
+
+  if (btnApplyRecommended) {
+    btnApplyRecommended.addEventListener('click', () => {
+      if (currentRecommendation) {
+        applyConfigRecommendation(currentRecommendation);
+      }
+    });
+  }
+
   // Process Incoming Files
   function handleIncomingFiles(fileList) {
     const htmlFiles = fileList.filter(f => f.name && (f.name.toLowerCase().endsWith('.html') || f.name.toLowerCase().endsWith('.htm')));
@@ -609,10 +840,12 @@
       if (btnClearAll) btnClearAll.style.display = 'none';
       if (btnCompressAllTop) btnCompressAllTop.style.display = 'none';
       if (btnDownloadZipTop) btnDownloadZipTop.style.display = 'none';
+      renderConfigAdvisor();
       return;
     }
 
     queueSection.classList.add('visible');
+    renderConfigAdvisor();
     if (btnClearAll) btnClearAll.style.display = 'inline-flex';
     if (btnCompressAllTop) btnCompressAllTop.style.display = 'inline-flex';
     if (btnDownloadZipTop) btnDownloadZipTop.style.display = 'inline-flex';
