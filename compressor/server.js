@@ -27,6 +27,7 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  '.wasm': 'application/wasm',
   '.zip': 'application/zip'
 };
 

@@ -164,16 +164,21 @@
     ffmpegPipelinePreview.textContent = `ffmpeg -y -i input.mp4 -c:v libx264 -crf ${state.crf} -maxrate ${Math.round(state.bitrateKbps * 1.35)}k -preset slow${vf} -pix_fmt yuv420p -movflags +faststart ${aud} output.mp4`;
   }
 
+  function isWasmFfmpegAvailable() {
+    return typeof window.FFmpegWASM !== 'undefined' && window.location.protocol !== 'file:';
+  }
+
   function renderFfmpegStatusUI() {
     updateFfmpegPipelineText();
     const st = state.ffmpegStatus;
     const isNativeReady = st.serverConnected && st.installed;
+    const isWasmReady = !isNativeReady && isWasmFfmpegAvailable();
 
     if (ffmpegEngineBar) {
-      ffmpegEngineBar.classList.toggle('active-bin', isNativeReady && state.videoEngine === 'ffmpeg');
+      ffmpegEngineBar.classList.toggle('active-bin', (isNativeReady || isWasmReady) && state.videoEngine === 'ffmpeg');
     }
     if (ffmpegStatusDot) {
-      ffmpegStatusDot.classList.toggle('online', isNativeReady);
+      ffmpegStatusDot.classList.toggle('online', isNativeReady || isWasmReady);
     }
 
     if (btnModeFfmpeg) btnModeFfmpeg.classList.toggle('active', state.videoEngine === 'ffmpeg');
@@ -229,14 +234,44 @@
       if (ffmpegModalDetails) {
         ffmpegModalDetails.textContent = 'Click "⚡ Install & Enable FFmpeg (Global + Local)" below to download and register the FFmpeg binary.';
       }
+    } else if (isWasmReady) {
+      if (ffmpegStatusTitle) {
+        ffmpegStatusTitle.textContent = state.videoEngine === 'ffmpeg'
+          ? '🟢 Frontend FFmpeg.wasm Enabled (Client-Side H.264)'
+          : '🟢 FFmpeg.wasm Ready (Browser MediaRecorder Selected)';
+      }
+      if (ffmpegCodecBadge) {
+        ffmpegCodecBadge.className = 'pss-badge badge-green';
+        ffmpegCodecBadge.textContent = state.videoEngine === 'ffmpeg'
+          ? '🚀 libx264 (WASM) • CRF ' + state.crf + ' • yuv420p'
+          : '🌐 MediaRecorder Active';
+      }
+      if (ffmpegStatusSub) {
+        ffmpegStatusSub.textContent = 'Running 100% client-side via vendor/ffmpeg/ffmpeg-core.wasm (no Node server required).';
+      }
+      if (btnInstallFfmpegQuick) {
+        btnInstallFfmpegQuick.textContent = '✓ FFmpeg.wasm Ready';
+      }
+      if (ffmpegModalStateLabel) ffmpegModalStateLabel.textContent = '✅ Frontend FFmpeg.wasm Active (No Backend Needed)';
+      if (ffmpegModalGlobalBadge) {
+        ffmpegModalGlobalBadge.className = 'pss-badge badge-green';
+        ffmpegModalGlobalBadge.textContent = 'WASM Client-Side Ready';
+      }
+      if (ffmpegModalDetails) {
+        ffmpegModalDetails.innerHTML =
+          `<strong>Mode:</strong> Client-Side WebAssembly (<code>vendor/ffmpeg/ffmpeg-core.wasm</code>)<br>` +
+          `<strong>H.264 (libx264):</strong> Enabled directly in browser &bull; <strong>Optional:</strong> Start <code>node server.js</code> for faster native binary transcoding.`;
+      }
     } else {
-      if (ffmpegStatusTitle) ffmpegStatusTitle.textContent = '⚡ FFmpeg Binary Installed Globally (Start Local Server for Bridge)';
+      if (ffmpegStatusTitle) ffmpegStatusTitle.textContent = '⚡ Static Browser Mode (Open via HTTP for FFmpeg.wasm, or Start Local Server)';
       if (ffmpegCodecBadge) {
         ffmpegCodecBadge.className = 'pss-badge badge-blue';
         ffmpegCodecBadge.textContent = 'Fallback: Browser MediaRecorder';
       }
       if (ffmpegStatusSub) {
-        ffmpegStatusSub.textContent = 'Global FFmpeg is installed (C:\\nvm4w\\nodejs\\ffmpeg.exe). Run compressor/start_app.bat or node compressor/server.js to connect browser directly to native FFmpeg.';
+        ffmpegStatusSub.textContent = window.location.protocol === 'file:'
+          ? 'Opened via file:// — browsers block WebAssembly Workers on file://. Serve over any HTTP host for FFmpeg.wasm, or run start_app.bat.'
+          : 'Run compressor/start_app.bat or node compressor/server.js to connect browser directly to native FFmpeg.';
       }
       if (btnInstallFfmpegQuick) {
         btnInstallFfmpegQuick.textContent = '🚀 Connect / Enable FFmpeg';
@@ -244,12 +279,12 @@
       if (ffmpegModalStateLabel) ffmpegModalStateLabel.textContent = 'ℹ️ Static Browser Mode — Start Local FFmpeg Bridge Server';
       if (ffmpegModalGlobalBadge) {
         ffmpegModalGlobalBadge.className = 'pss-badge badge-blue';
-        ffmpegModalGlobalBadge.textContent = 'Global CLI Ready';
+        ffmpegModalGlobalBadge.textContent = 'MediaRecorder Fallback';
       }
       if (ffmpegModalDetails) {
         ffmpegModalDetails.innerHTML =
-          `FFmpeg is installed globally (<code>C:\\nvm4w\\nodejs\\ffmpeg.exe</code>) and locally in <code>compressor/node_modules/ffmpeg-static</code>.<br>` +
-          `To let the browser invoke the native <code>ffmpeg.exe</code> binary directly, start the local server with <code>node compressor/server.js</code> or <code>compressor/start_app.bat</code> and click <strong>Re-verify Binary Status</strong>.`;
+          `To use <strong>FFmpeg.wasm</strong> client-side, serve this folder over HTTP (e.g. GitHub Pages, Netlify, or any static server).<br>` +
+          `To use the faster native <code>ffmpeg.exe</code> binary, run <code>node compressor/server.js</code> or <code>compressor/start_app.bat</code>.`;
       }
     }
   }
@@ -1198,9 +1233,102 @@
     if (pct) pct.textContent = item.progress + '%';
   }
 
-  // Video Transcoder: Uses Native FFmpeg Binary (libx264 H.264 CRF) when enabled & connected, with In-Browser MediaRecorder fallback
+  // Frontend-Only FFmpeg.wasm Engine (lazy-loaded & serialized)
+  let wasmFfmpegInstance = null;
+  let wasmFfmpegLoadPromise = null;
+  let wasmFfmpegQueue = Promise.resolve();
+
+  function base64ToUint8Array(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function uint8ArrayToBase64(bytes) {
+    let bin = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(bin);
+  }
+
+  async function getFfmpegWasm() {
+    if (wasmFfmpegInstance && wasmFfmpegInstance.loaded) return wasmFfmpegInstance;
+    if (wasmFfmpegLoadPromise) return wasmFfmpegLoadPromise;
+
+    wasmFfmpegLoadPromise = (async () => {
+      const ffmpeg = new window.FFmpegWASM.FFmpeg();
+      const baseUrl = new URL('vendor/ffmpeg/', window.location.href).href;
+      await ffmpeg.load({
+        coreURL: baseUrl + 'ffmpeg-core.js',
+        wasmURL: baseUrl + 'ffmpeg-core.wasm'
+      });
+      wasmFfmpegInstance = ffmpeg;
+      return ffmpeg;
+    })();
+
+    try {
+      return await wasmFfmpegLoadPromise;
+    } catch (err) {
+      wasmFfmpegLoadPromise = null;
+      throw err;
+    }
+  }
+
+  function transcodeWithFfmpegWasm(b64, mime, options) {
+    const run = async () => {
+      const ffmpeg = await getFfmpegWasm();
+      const ext = (mime || 'mp4').toLowerCase().includes('webm') ? 'webm' : 'mp4';
+      const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      const inputName = `in_${id}.${ext}`;
+      const outputName = `out_${id}.mp4`;
+
+      try {
+        await ffmpeg.writeFile(inputName, base64ToUint8Array(b64));
+        const args = [
+          '-y',
+          '-i', inputName,
+          '-c:v', 'libx264',
+          '-crf', String(state.crf),
+          '-maxrate', `${Math.round(options.bitrateKbps * 1.35)}k`,
+          '-bufsize', `${Math.round(options.bitrateKbps * 2)}k`,
+          '-preset', 'veryfast'
+        ];
+        if (options.scale && options.scale < 0.999) {
+          args.push('-vf', `scale=trunc(iw*${options.scale}/2)*2:trunc(ih*${options.scale}/2)*2`);
+        }
+        args.push('-pix_fmt', 'yuv420p', '-movflags', '+faststart');
+        if (options.stripAudio) {
+          args.push('-an');
+        } else {
+          args.push('-c:a', 'aac', '-b:a', '96k');
+        }
+        args.push(outputName);
+
+        await ffmpeg.exec(args);
+        const outBytes = await ffmpeg.readFile(outputName);
+        if (outBytes && outBytes.length > 100) {
+          return { b64: uint8ArrayToBase64(outBytes), mime: 'mp4', engine: 'ffmpeg-wasm' };
+        }
+      } finally {
+        try { await ffmpeg.deleteFile(inputName); } catch (_) {}
+        try { await ffmpeg.deleteFile(outputName); } catch (_) {}
+      }
+      return null;
+    };
+
+    const next = wasmFfmpegQueue.then(run, run);
+    wasmFfmpegQueue = next.catch(() => {});
+    return next;
+  }
+
+  // Video Transcoder: Uses Native FFmpeg Binary (if server running), then Frontend FFmpeg.wasm, then MediaRecorder fallback
   async function transcodeBase64Video(b64, mime, options) {
-    // 1. Try Native FFmpeg Binary Engine first if selected
+    // 1. Try Native FFmpeg Binary Engine first if selected & server is connected
     if (state.videoEngine === 'ffmpeg') {
       if (!state.ffmpegStatus.serverConnected) {
         await checkFfmpegServerStatus(true);
@@ -1227,7 +1355,19 @@
             }
           }
         } catch (_) {
-          // Fall through to browser MediaRecorder fallback
+          // Fall through to FFmpeg.wasm / MediaRecorder fallback
+        }
+      }
+
+      // 2. Frontend-only FFmpeg.wasm fallback (runs client-side without Node backend)
+      if (isWasmFfmpegAvailable()) {
+        try {
+          const wasmRes = await transcodeWithFfmpegWasm(b64, mime, options);
+          if (wasmRes && wasmRes.b64 && wasmRes.b64.length > 100) {
+            return wasmRes;
+          }
+        } catch (_) {
+          // Fall through to MediaRecorder fallback
         }
       }
     }
