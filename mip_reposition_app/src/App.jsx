@@ -30,6 +30,9 @@ function TopBar({ state, chooseFile, exportFile }) {
       <a href={`${base}media_to_base64/index.html`} className="hdr-nav-link" title="Batch Media to Base64 Converter">
         <span className="nav-icon">🔤</span> Base64 Studio
       </a>
+      <a href={`${base}scene_scanner/index.html`} className="hdr-nav-link" title="HTML & Video Scene Capture">
+        <span className="nav-icon">&#128247;</span> Scene Capture
+      </a>
     </nav>
 
     <div className="top-actions"><span id="projectName">{state.project?.name || 'No project loaded'}</span>
