@@ -106,7 +106,7 @@ function renderDetectedScenes(scenes=[],message='Upload an HTML file to detect i
 
 const ui = Object.fromEntries(['file','drop','sourceName','device','portrait','landscape','dimensions','mode','selector','selectorOptions','timedOptions','changeOptions','htmlOptions','interval','count','threshold','settle','scan','stop','stage','deviceShell','viewport','empty','creative','video','kind','capture','status','progress','gallery','total','clear','downloadAll','demo','lightbox','fullImage','closeLightbox'].map(id=>[id,$(id)]));
 let orientation='portrait', source=null, busy=false, cancelled=false, ready=false, token='', serial=0, pending=new Map(), captures=[], videoURL=null;
-let libraryPromise, previewHTML='';
+let libraryPromise, previewHTML='', captureSerial=0;
 
 const bothButton=document.createElement('button');bothButton.id='both';bothButton.textContent='Both';bothButton.setAttribute('aria-pressed','false');ui.landscape.after(bothButton);ui.both=bothButton;
 const secondShell=ui.deviceShell.cloneNode(true);
@@ -161,6 +161,7 @@ function setBusy(value){
   ui.capture.disabled=value || !ready;ui.scan.disabled=value || !ready;ui.clear.disabled=value || !captures.length;ui.downloadAll.disabled=value || !captures.length;
   ui.stop.hidden=!value;ui.scan.hidden=value;ui.progress.hidden=!value;
   ui.video.controls=!value;
+  ui.gallery.querySelectorAll('.delete-capture').forEach(button=>button.disabled=value);
   document.querySelectorAll('.scene-choice').forEach(button=>button.disabled=value||!ready||source?.type!=='html');
 }
 async function guarded(task){if(busy)return;cancelled=false;setBusy(true);try{await task();}catch(error){status(error.message || String(error),true);}finally{setBusy(false);}}
@@ -346,9 +347,16 @@ async function captureView(label,view){
   const frame=orientation==='both' && view==='landscape'?ui.creativeLandscape:ui.creative;
   const data=source.type==='html'?await rpc('capture',{},frame):videoCanvas(view).toDataURL('image/png');
   const blob=await (await fetch(data)).blob();const url=URL.createObjectURL(blob);
-  const index=captures.length+1;const stem=source.name.replace(/\.[^.]+$/,'').replace(/[^a-z0-9_-]/gi,'_').slice(0,70)||'creative';
+  const index=++captureSerial;const stem=source.name.replace(/\.[^.]+$/,'').replace(/[^a-z0-9_-]/gi,'_').slice(0,70)||'creative';
   const fileName=`${stem}_${ui.device.value}_${view}_${String(index).padStart(3,'0')}.png`;
   const item={blob,url,fileName,width,height,label,source:source.name,device:ui.device.value,orientation:view};captures.push(item);renderGallery();return item;
+}
+function deleteCapture(item){
+  if(busy)return;
+  const index=captures.indexOf(item);if(index<0)return;
+  if(ui.fullImage.getAttribute('src')===item.url){ui.lightbox.close();ui.fullImage.removeAttribute('src');}
+  captures.splice(index,1);URL.revokeObjectURL(item.url);renderGallery();
+  status('Capture deleted.');
 }
 function renderGallery(){
   ui.gallery.replaceChildren();ui.total.textContent=captures.length;
@@ -360,7 +368,10 @@ function renderGallery(){
     preview.onclick=()=>{ui.fullImage.src=item.url;ui.lightbox.showModal();};
     const info=document.createElement('div');info.className='card-info';const name=document.createElement('strong');name.textContent=`${String(index+1).padStart(2,'0')} · ${item.label}`;
     const details=document.createElement('small');details.textContent=`${item.device==='ipad'?'iPad mini':'iPhone SE'} · ${item.width} × ${item.height}`;
-    const download=document.createElement('a');download.href=item.url;download.download=item.fileName;download.textContent='↓ Download PNG';info.append(name,details,download);card.append(preview,info);ui.gallery.append(card);
+    const download=document.createElement('a');download.href=item.url;download.download=item.fileName;download.textContent='↓ Download PNG';
+    const remove=document.createElement('button');remove.type='button';remove.className='quiet delete-capture';remove.textContent='Delete';remove.style.color='#b84d3f';remove.disabled=busy;remove.setAttribute('aria-label','Delete capture '+(index+1));remove.onclick=()=>deleteCapture(item);
+    const actions=document.createElement('div');actions.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px';actions.append(download,remove);
+    info.append(name,details,actions);card.append(preview,info);ui.gallery.append(card);
   });
   ui.clear.disabled=busy || !captures.length;ui.downloadAll.disabled=busy || !captures.length;
 }
